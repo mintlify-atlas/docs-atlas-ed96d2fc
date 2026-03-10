@@ -1,0 +1,108 @@
+{
+  "projectType": "saas",
+  "projectName": "RuedaPro UNIPAZ",
+  "projectDescription": "Academic web platform for managing, evaluating, and publishing results of the Engineering Projects Wheel event at UNIPAZ.",
+  "theme": "linden",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#1E40AF",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "features"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/admin-guide",
+              "guides/teacher-guide",
+              "guides/student-guide"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/authentication",
+              "features/project-management",
+              "features/evaluation-system",
+              "features/results-gallery"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/setup",
+              "deployment/supabase-configuration",
+              "deployment/security"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Database Schema",
+            "pages": [
+              "api/schema/tables",
+              "api/schema/relationships",
+              "api/schema/security-policies"
+            ]
+          },
+          {
+            "group": "JavaScript API",
+            "pages": [
+              "api/js/auth",
+              "api/js/router",
+              "api/js/views"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-role authentication system (Admin, Teacher, Student)",
+    "Project registration and lifecycle management",
+    "Teacher evaluation system with scoring rubrics",
+    "Student dashboard for tracking project feedback",
+    "Admin panel for user and project management",
+    "Public results gallery and historical rankings",
+    "Row-level security with Supabase RLS policies",
+    "Responsive design with light/dark theme support"
+  ],
+  "publicApiSurface": [
+    "handleLogin(event, role)",
+    "handleLogout()",
+    "navigateTo(route, data)",
+    "renderHomeView()",
+    "renderGaleriaView()",
+    "renderResultsView()",
+    "renderLoginView(role)",
+    "renderDocenteDashboard()",
+    "renderEstudianteDashboard()",
+    "renderAdminDashboard()",
+    "renderEvaluacionView()",
+    "escapeHTML(str)",
+    "supabaseClient.from('perfiles')",
+    "supabaseClient.from('proyectos')",
+    "supabaseClient.from('evaluaciones')",
+    "supabaseClient.from('proyecto_evaluadores')",
+    "supabaseClient.from('proyecto_estudiantes')"
+  ]
+}
