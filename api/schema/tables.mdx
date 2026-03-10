@@ -1,0 +1,488 @@
+---
+title: "Database Tables"
+description: "Complete reference of database tables used in RuedaPro UNIPAZ for managing engineering project evaluations"
+---
+
+## Overview
+
+The RuedaPro UNIPAZ database consists of five core tables that manage user profiles, projects, evaluations, and their relationships. All tables use UUID primary keys and leverage Supabase's built-in authentication system.
+
+<Tabs>
+  <Tab title="perfiles">
+    ## perfiles (User Profiles)
+
+    The `perfiles` table stores user profile information for all system users including administrators, evaluators (docentes), and students (estudiantes).
+
+    ### Purpose
+    - Stores user account information and role assignments
+    - Links to Supabase Auth users via UUID
+    - Manages user metadata including names and optional avatar URLs
+
+    ### Schema
+
+    <ResponseField name="id" type="uuid" required>
+      Primary key. References `auth.users.id` from Supabase authentication system.
+    </ResponseField>
+
+    <ResponseField name="nombre" type="text" required>
+      Full name of the user (e.g., "Carlos Martínez", "Ana López")
+    </ResponseField>
+
+    <ResponseField name="rol" type="text" required>
+      User role in the system. Valid values: `admin`, `docente`, `estudiante`
+    </ResponseField>
+
+    <ResponseField name="avatar_url" type="text">
+      Optional URL to user's avatar image stored in Supabase Storage
+    </ResponseField>
+
+    <ResponseField name="created_at" type="timestamp">
+      Timestamp when the profile was created. Auto-generated on insert.
+    </ResponseField>
+
+    ### Example Query
+
+    ```sql
+    -- Fetch all docente profiles
+    SELECT id, nombre, rol, created_at
+    FROM perfiles
+    WHERE rol = 'docente'
+    ORDER BY created_at DESC;
+    ```
+
+    ### Usage in Code
+
+    From `adminDashboardView.js:277-280`:
+    ```javascript
+    const { data, error } = await supabaseClient
+        .from('perfiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+    ```
+
+    From `adminDashboardView.js:620-624`:
+    ```javascript
+    const { data: docentes, error: errDoc } = await supabaseClient
+        .from('perfiles')
+        .select('id, nombre')
+        .eq('rol', 'docente')
+        .order('nombre');
+    ```
+  </Tab>
+
+  <Tab title="proyectos">
+    ## proyectos (Projects)
+
+    The `proyectos` table contains all engineering project records submitted for evaluation.
+
+    ### Purpose
+    - Stores project metadata (name, category, semester, year)
+    - Tracks project evaluation status
+    - Central entity that links students, evaluators, and evaluations
+
+    ### Schema
+
+    <ResponseField name="id" type="uuid" required>
+      Primary key. Auto-generated UUID for each project.
+    </ResponseField>
+
+    <ResponseField name="nombre" type="text" required>
+      Name of the project (e.g., "Sistema IoT para Invernaderos Inteligentes")
+    </ResponseField>
+
+    <ResponseField name="categoria" type="text" required>
+      Project category. Valid values: `Desarrollo`, `Propuesta`, `Aplicación`
+    </ResponseField>
+
+    <ResponseField name="semestre" type="integer" required>
+      Academic semester. Valid values: `1` (first semester), `2` (second semester)
+    </ResponseField>
+
+    <ResponseField name="anio" type="integer" required>
+      Academic year (e.g., 2026, 2025)
+    </ResponseField>
+
+    <ResponseField name="estado" type="text" required>
+      Evaluation status. Valid values: `Pendiente`, `Evaluado`, `Vencida`
+    </ResponseField>
+
+    <ResponseField name="created_at" type="timestamp">
+      Timestamp when the project was created. Auto-generated on insert.
+    </ResponseField>
+
+    ### Example Queries
+
+    ```sql
+    -- Create a new project
+    INSERT INTO proyectos (nombre, categoria, semestre, anio, estado)
+    VALUES (
+        'Sistema IoT para Invernaderos',
+        'Desarrollo',
+        1,
+        2026,
+        'Pendiente'
+    )
+    RETURNING *;
+    ```
+
+    ```sql
+    -- Fetch all evaluated projects for a specific period
+    SELECT id, nombre, categoria, semestre, anio, estado
+    FROM proyectos
+    WHERE estado = 'Evaluado'
+      AND anio = 2026
+      AND semestre = 1
+      AND categoria = 'Desarrollo';
+    ```
+
+    ### Usage in Code
+
+    From `adminDashboardView.js:741-746`:
+    ```javascript
+    const { data: projData, error: projError } = await supabaseClient
+        .from('proyectos')
+        .insert([payload])
+        .select()
+        .single();
+    ```
+
+    From `evaluacionView.js:320-324`:
+    ```javascript
+    const { error: updErr } = await supabaseClient
+        .from('proyectos')
+        .update({ estado: 'Evaluado' })
+        .eq('id', currentEvaluationProjectId);
+    ```
+  </Tab>
+
+  <Tab title="evaluaciones">
+    ## evaluaciones (Evaluations)
+
+    The `evaluaciones` table stores individual evaluation records submitted by evaluators (docentes) for projects.
+
+    ### Purpose
+    - Records evaluation scores and feedback
+    - Links evaluators to the projects they evaluate
+    - Stores detailed rubric scores in JSONB format
+    - Calculates final scores as average of all criteria
+
+    ### Schema
+
+    <ResponseField name="id" type="uuid" required>
+      Primary key. Auto-generated UUID for each evaluation.
+    </ResponseField>
+
+    <ResponseField name="proyecto_id" type="uuid" required>
+      Foreign key referencing `proyectos.id`. The project being evaluated.
+    </ResponseField>
+
+    <ResponseField name="evaluador_id" type="uuid" required>
+      Foreign key referencing `perfiles.id`. The evaluator (docente) submitting the evaluation.
+    </ResponseField>
+
+    <ResponseField name="puntaje_final" type="numeric" required>
+      Final score calculated as the average of all rubric criteria. Range: 1.0 to 5.0
+    </ResponseField>
+
+    <ResponseField name="observaciones" type="text">
+      Text feedback and observations from the evaluator
+    </ResponseField>
+
+    <ResponseField name="rubrica_detalle" type="jsonb">
+      Detailed rubric scores stored as JSON array. Each item contains `criterioIndex` and `puntaje`.
+      
+      Example structure:
+      ```json
+      [
+        {"criterioIndex": 1, "puntaje": 4.5},
+        {"criterioIndex": 2, "puntaje": 4.0},
+        {"criterioIndex": 3, "puntaje": 4.2}
+      ]
+      ```
+    </ResponseField>
+
+    <ResponseField name="created_at" type="timestamp">
+      Timestamp when the evaluation was submitted. Auto-generated on insert.
+    </ResponseField>
+
+    ### Example Query
+
+    ```sql
+    -- Insert a new evaluation
+    INSERT INTO evaluaciones (
+        proyecto_id,
+        evaluador_id,
+        puntaje_final,
+        observaciones,
+        rubrica_detalle
+    )
+    VALUES (
+        '123e4567-e89b-12d3-a456-426614174000',
+        '789e4567-e89b-12d3-a456-426614174001',
+        4.3,
+        'Excelente trabajo en la metodología propuesta.',
+        '[{"criterioIndex": 1, "puntaje": 4.5}, {"criterioIndex": 2, "puntaje": 4.0}]'
+    );
+    ```
+
+    ### Usage in Code
+
+    From `evaluacionView.js:287-296`:
+    ```javascript
+    const { error: evalErr } = await supabaseClient
+        .from('evaluaciones')
+        .insert([{
+            proyecto_id: currentEvaluationProjectId,
+            evaluador_id: currentProfile.id,
+            puntaje_final: finalScore,
+            observaciones: observaciones,
+            rubrica_detalle: rubricData
+        }]);
+    ```
+
+    From `docenteDashboardView.js:156-171`:
+    ```javascript
+    const { data: assignments, error } = await supabaseClient
+        .from('proyecto_evaluadores')
+        .select(`
+            proyecto_id,
+            proyectos (
+                id,
+                nombre,
+                categoria,
+                semestre,
+                anio,
+                estado,
+                evaluaciones (evaluador_id, puntaje_final)
+            )
+        `)
+        .eq('evaluador_id', currentProfile.id);
+    ```
+  </Tab>
+
+  <Tab title="proyecto_evaluadores">
+    ## proyecto_evaluadores (Project-Evaluator Assignments)
+
+    Junction table that manages many-to-many relationships between projects and evaluators (docentes).
+
+    ### Purpose
+    - Assigns evaluators to projects (typically 1-3 evaluators per project)
+    - Enables tracking of which docentes are responsible for evaluating which projects
+    - Used to determine completion status (all assigned evaluators must submit)
+
+    ### Schema
+
+    <ResponseField name="proyecto_id" type="uuid" required>
+      Foreign key referencing `proyectos.id`. Part of composite primary key.
+    </ResponseField>
+
+    <ResponseField name="evaluador_id" type="uuid" required>
+      Foreign key referencing `perfiles.id` (where `rol = 'docente'`). Part of composite primary key.
+    </ResponseField>
+
+    <ResponseField name="created_at" type="timestamp">
+      Timestamp when the assignment was created.
+    </ResponseField>
+
+    ### Constraints
+    - Primary key: `(proyecto_id, evaluador_id)` - ensures each evaluator is assigned only once per project
+    - Typically 1-3 evaluators are assigned per project
+
+    ### Example Query
+
+    ```sql
+    -- Assign three evaluators to a project
+    INSERT INTO proyecto_evaluadores (proyecto_id, evaluador_id)
+    VALUES
+        ('123e4567-e89b-12d3-a456-426614174000', 'eval-uuid-1'),
+        ('123e4567-e89b-12d3-a456-426614174000', 'eval-uuid-2'),
+        ('123e4567-e89b-12d3-a456-426614174000', 'eval-uuid-3');
+    ```
+
+    ```sql
+    -- Find all projects assigned to a specific evaluator
+    SELECT p.id, p.nombre, p.categoria, p.estado
+    FROM proyectos p
+    INNER JOIN proyecto_evaluadores pe ON pe.proyecto_id = p.id
+    WHERE pe.evaluador_id = 'evaluator-uuid';
+    ```
+
+    ### Usage in Code
+
+    From `adminDashboardView.js:751-759`:
+    ```javascript
+    if (evaluatorIds.length > 0 && projData) {
+        const evaluatorInserts = evaluatorIds.map(id => ({
+            proyecto_id: projData.id,
+            evaluador_id: id
+        }));
+        const { error: evalError } = await supabaseClient
+            .from('proyecto_evaluadores')
+            .insert(evaluatorInserts);
+    }
+    ```
+
+    From `evaluacionView.js:301-305`:
+    ```javascript
+    const { data: assignedData, error: assignedErr } = await supabaseClient
+        .from('proyecto_evaluadores')
+        .select('evaluador_id', { count: 'exact' })
+        .eq('proyecto_id', currentEvaluationProjectId);
+    ```
+  </Tab>
+
+  <Tab title="proyecto_estudiantes">
+    ## proyecto_estudiantes (Project-Student Assignments)
+
+    Junction table that manages relationships between projects and their student authors.
+
+    ### Purpose
+    - Links students to the projects they authored
+    - Enables students to view their project evaluation results
+    - Supports multiple students per project (team projects)
+
+    ### Schema
+
+    <ResponseField name="proyecto_id" type="uuid" required>
+      Foreign key referencing `proyectos.id`. Part of composite primary key.
+    </ResponseField>
+
+    <ResponseField name="estudiante_id" type="uuid" required>
+      Foreign key referencing `perfiles.id` (where `rol = 'estudiante'`). Part of composite primary key.
+    </ResponseField>
+
+    <ResponseField name="created_at" type="timestamp">
+      Timestamp when the assignment was created.
+    </ResponseField>
+
+    ### Constraints
+    - Primary key: `(proyecto_id, estudiante_id)` - ensures each student is assigned only once per project
+    - Projects can have one or more student authors
+
+    ### Example Query
+
+    ```sql
+    -- Assign a student to a project
+    INSERT INTO proyecto_estudiantes (proyecto_id, estudiante_id)
+    VALUES (
+        '123e4567-e89b-12d3-a456-426614174000',
+        'student-uuid'
+    );
+    ```
+
+    ```sql
+    -- Find all projects for a specific student with evaluations
+    SELECT p.id, p.nombre, p.categoria, p.estado,
+           e.puntaje_final, e.observaciones
+    FROM proyectos p
+    INNER JOIN proyecto_estudiantes pe ON pe.proyecto_id = p.id
+    LEFT JOIN evaluaciones e ON e.proyecto_id = p.id
+    WHERE pe.estudiante_id = 'student-uuid';
+    ```
+
+    ### Usage in Code
+
+    From `adminDashboardView.js:763-767`:
+    ```javascript
+    if (studentId && projData) {
+        const { error: studError } = await supabaseClient
+            .from('proyecto_estudiantes')
+            .insert([{ proyecto_id: projData.id, estudiante_id: studentId }]);
+    }
+    ```
+
+    From `estudianteDashboardView.js:32-45`:
+    ```javascript
+    const { data: assignments, error: aErr } = await supabaseClient
+        .from('proyecto_estudiantes')
+        .select(`
+            proyecto_id,
+            proyectos (
+                id, nombre, categoria, semestre, anio, estado,
+                evaluaciones (
+                    puntaje_final,
+                    observaciones,
+                    perfiles (nombre)
+                )
+            )
+        `)
+        .eq('estudiante_id', currentProfile.id);
+    ```
+  </Tab>
+</Tabs>
+
+## Data Types Summary
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `uuid` | Universally unique identifier | `123e4567-e89b-12d3-a456-426614174000` |
+| `text` | Variable-length character string | `"Sistema IoT para Invernaderos"` |
+| `integer` | Whole number | `2026`, `1`, `2` |
+| `numeric` | Decimal number | `4.5`, `3.8` |
+| `jsonb` | Binary JSON data | `[{"criterioIndex": 1, "puntaje": 4.5}]` |
+| `timestamp` | Date and time with timezone | `2026-03-10 14:30:00+00` |
+
+## Common Query Patterns
+
+### Fetch Projects with Nested Data
+
+```javascript
+// Fetch project with all related entities
+const { data, error } = await supabaseClient
+    .from('proyectos')
+    .select(`
+        *,
+        proyecto_evaluadores (
+            perfiles (nombre)
+        ),
+        proyecto_estudiantes (
+            perfiles (nombre)
+        ),
+        evaluaciones (
+            puntaje_final,
+            observaciones,
+            perfiles (nombre)
+        )
+    `)
+    .eq('id', projectId)
+    .single();
+```
+
+### Calculate Average Evaluation Score
+
+```javascript
+// Calculate average score from multiple evaluations
+const avgScore = evaluaciones.reduce((acc, curr) => 
+    acc + parseFloat(curr.puntaje_final || 0), 0
+) / evaluaciones.length;
+```
+
+### Filter Projects by Period and Status
+
+```javascript
+const { data, error } = await supabaseClient
+    .from('proyectos')
+    .select('*')
+    .eq('estado', 'Evaluado')
+    .eq('anio', 2026)
+    .eq('semestre', 1)
+    .eq('categoria', 'Desarrollo');
+```
+
+## Best Practices
+
+<Card title="Use Transactions for Multi-Table Operations" icon="layer-group">
+  When creating projects with evaluator/student assignments, ensure all inserts succeed or fail together to maintain data integrity.
+</Card>
+
+<Card title="Validate Foreign Keys" icon="check">
+  Always verify that referenced UUIDs exist before inserting into junction tables to avoid orphaned records.
+</Card>
+
+<Card title="Index Foreign Keys" icon="gauge-high">
+  Ensure foreign key columns are indexed for optimal JOIN performance, especially on `proyecto_id` and `evaluador_id`.
+</Card>
+
+<Card title="Use Cascading Deletes Carefully" icon="triangle-exclamation">
+  When deleting projects or users, consider the impact on related records in junction tables and evaluations.
+</Card>

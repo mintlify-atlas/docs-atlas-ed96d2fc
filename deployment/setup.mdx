@@ -1,0 +1,310 @@
+---
+title: 'Setup and Installation'
+description: 'Complete deployment guide for RuedaPro UNIPAZ platform'
+---
+
+## Overview
+
+RuedaPro UNIPAZ is a static web application that requires minimal server infrastructure. The application consists of HTML, CSS, and JavaScript files that connect to a Supabase backend for authentication and data management.
+
+## Prerequisites
+
+Before deploying RuedaPro UNIPAZ, ensure you have:
+
+- A web server or static hosting service (Netlify, Vercel, GitHub Pages, Apache, Nginx, etc.)
+- A [Supabase](https://supabase.com) account (free tier supported)
+- Git installed locally (for cloning the repository)
+- Basic knowledge of web hosting and DNS configuration
+
+## Repository Structure
+
+The application follows a clean, modular architecture:
+
+```
+ruedadeproyectos/
+├── index.html              # Main application entry point
+├── assets/
+│   └── css/
+│       └── styles.css      # Application styles
+├── js/
+│   ├── config.js           # Supabase configuration
+│   ├── auth.js             # Authentication logic
+│   ├── router.js           # Client-side routing
+│   ├── main.js             # Application initialization
+│   └── views/              # View components
+│       ├── homeView.js
+│       ├── authView.js
+│       ├── adminDashboardView.js
+│       ├── docenteDashboardView.js
+│       ├── estudianteDashboardView.js
+│       ├── galeriaView.js
+│       ├── resultsView.js
+│       └── evaluacionView.js
+└── sql/
+    └── rls_security_hardening.sql  # Database security policies
+```
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the RuedaPro UNIPAZ repository to your local machine:
+    
+    ```bash
+    git clone https://github.com/your-org/ruedadeproyectos.git
+    cd ruedadeproyectos
+    ```
+  </Step>
+
+  <Step title="Configure Supabase">
+    Set up your Supabase project and obtain the required credentials. See the [Supabase Configuration](/deployment/supabase-configuration) page for detailed instructions.
+    
+    You'll need:
+    - Supabase project URL
+    - Supabase anon (public) key
+  </Step>
+
+  <Step title="Update Configuration File">
+    Edit `js/config.js` and replace the placeholder values with your Supabase credentials:
+    
+    ```javascript js/config.js
+    const SUPABASE_URL = 'https://your-project-id.supabase.co';
+    const SUPABASE_ANON_KEY = 'your-anon-key-here';
+    
+    let supabaseClient = null;
+    
+    if (window.supabase) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+    ```
+    
+    <Warning>
+      Never commit your actual Supabase keys to version control. Use environment variables or a separate config file that's gitignored for production deployments.
+    </Warning>
+  </Step>
+
+  <Step title="Set Up Database Schema">
+    Run the SQL scripts in your Supabase SQL Editor to create the required tables and security policies:
+    
+    1. Create the database tables (perfiles, proyectos, evaluaciones, proyecto_evaluadores, proyecto_estudiantes)
+    2. Run the RLS security hardening script: `sql/rls_security_hardening.sql`
+    
+    See [Supabase Configuration](/deployment/supabase-configuration) for complete schema details.
+  </Step>
+
+  <Step title="Deploy to Hosting Service">
+    Choose one of the following deployment options:
+    
+    ### Option A: Netlify
+    
+    ```bash
+    # Install Netlify CLI
+    npm install -g netlify-cli
+    
+    # Deploy
+    netlify deploy --prod
+    ```
+    
+    ### Option B: Vercel
+    
+    ```bash
+    # Install Vercel CLI
+    npm install -g vercel
+    
+    # Deploy
+    vercel --prod
+    ```
+    
+    ### Option C: GitHub Pages
+    
+    1. Push your repository to GitHub
+    2. Go to Settings > Pages
+    3. Select the branch and root directory
+    4. Save and wait for deployment
+    
+    ### Option D: Traditional Web Server (Apache/Nginx)
+    
+    Copy all files to your web server's document root:
+    
+    ```bash
+    # Example for Apache
+    sudo cp -r * /var/www/html/ruedapro/
+    sudo chown -R www-data:www-data /var/www/html/ruedapro/
+    ```
+    
+    Configure your web server to serve the application:
+    
+    ```nginx nginx.conf
+    server {
+        listen 80;
+        server_name ruedapro.unipaz.edu;
+        root /var/www/html/ruedapro;
+        index index.html;
+        
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Create Initial Admin User">
+    After deployment, you need to create your first admin user through Supabase:
+    
+    1. Go to your Supabase project dashboard
+    2. Navigate to **Authentication > Users**
+    3. Click **Add User** > **Create new user**
+    4. Fill in the user details:
+       - Email: `admin@unipaz.edu` (or your admin email)
+       - Password: Create a secure password
+       - Auto Confirm User: ✓ Enabled
+    5. After creating the user, click on the user to edit
+    6. Scroll to **User Metadata** and add:
+       ```json
+       {
+         "nombre": "Administrador",
+         "rol": "admin"
+       }
+       ```
+    7. Save changes
+    
+    You can now log in using the admin portal at `https://your-domain.com/#/login-admin`
+    
+    <Note>
+      The `rol` field in user metadata controls access permissions. Valid values are: `admin`, `docente`, `estudiante`
+    </Note>
+  </Step>
+
+  <Step title="Verify Deployment">
+    Test your deployment:
+    
+    1. Visit your deployed site URL
+    2. Navigate to the admin login page
+    3. Log in with your admin credentials
+    4. Verify that you can access the admin dashboard
+    5. Test creating a docente (teacher) and estudiante (student) user
+    6. Check that the public ranking page displays correctly
+  </Step>
+</Steps>
+
+## Environment Variables (Optional)
+
+For production deployments, consider using environment variables instead of hardcoding credentials:
+
+```javascript js/config.js
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://default.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'default-key';
+```
+
+Set environment variables in your hosting platform:
+
+- **Netlify**: Site settings > Environment variables
+- **Vercel**: Project settings > Environment Variables
+- **GitHub Pages**: Use GitHub Secrets and a build action
+
+## Configuration Files
+
+### config.js
+
+The main configuration file located at `js/config.js` handles:
+
+- Supabase client initialization
+- XSS sanitization helper function
+- Global application constants
+
+### Key Security Features
+
+The application includes built-in XSS protection:
+
+```javascript
+function escapeHTML(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+```
+
+This function is used throughout the application to sanitize user input before rendering.
+
+## Troubleshooting
+
+### Application Shows "Supabase Not Initialized"
+
+**Cause**: The Supabase client failed to initialize.
+
+**Solution**:
+- Verify that `config.js` is loaded before other scripts
+- Check that the Supabase CDN is accessible: `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`
+- Ensure your `SUPABASE_URL` and `SUPABASE_ANON_KEY` are correct
+- Check browser console for network errors
+
+### Login Fails with "Authentication Failed"
+
+**Cause**: User doesn't exist or credentials are incorrect.
+
+**Solution**:
+- Verify the user exists in Supabase Authentication panel
+- Check that the user has the correct `rol` in user metadata
+- Ensure the user's email is confirmed
+- Verify RLS policies are properly configured
+
+### Users Can't Access Their Dashboard
+
+**Cause**: Role mismatch between login portal and user metadata.
+
+**Solution**:
+- Admin users must log in through `/login-admin`
+- Docente users must log in through `/login-docente`
+- Estudiante users must log in through `/login-estudiante`
+- Verify the `rol` field in user metadata matches the login portal used
+
+### Database Queries Fail
+
+**Cause**: RLS policies are blocking legitimate queries.
+
+**Solution**:
+- Run the `sql/rls_security_hardening.sql` script
+- Verify that authenticated users have read access to required tables
+- Check Supabase logs for policy violation errors
+- See [Security Best Practices](/deployment/security) for proper RLS configuration
+
+### Static Assets Not Loading
+
+**Cause**: Incorrect paths or CORS issues.
+
+**Solution**:
+- Ensure all paths in `index.html` are relative
+- Check that CSS and JS files are in the correct directories
+- Verify web server is configured to serve static files
+- Check browser console for 404 errors
+
+### Public Ranking Page Shows No Data
+
+**Cause**: No projects have been evaluated yet or RLS policies are too restrictive.
+
+**Solution**:
+- Create test projects and mark them as "Evaluado" status
+- Verify the RLS policy `"Public read evaluated evaluaciones"` is active
+- Check that students are properly associated with projects via `proyecto_estudiantes` table
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Supabase Configuration" icon="database" href="/deployment/supabase-configuration">
+    Set up database tables, authentication, and API keys
+  </Card>
+  <Card title="Security Best Practices" icon="shield" href="/deployment/security">
+    Learn about RLS policies and securing your deployment
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Supabase Documentation](https://supabase.com/docs)
+- [Netlify Deployment Guide](https://docs.netlify.com/)
+- [Vercel Deployment Guide](https://vercel.com/docs)
+- [GitHub Pages Guide](https://pages.github.com/)

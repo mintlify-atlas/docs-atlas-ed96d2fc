@@ -1,80 +1,198 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start Guide
+description: Get RuedaPro UNIPAZ up and running in minutes
+icon: rocket
 ---
 
-## Get started in three steps
+Get your RuedaPro UNIPAZ platform deployed and ready to manage engineering project evaluations in just a few steps.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- A Supabase account (free tier works)
+- Basic knowledge of JavaScript and HTML
+- A web hosting solution (Netlify, Vercel, or any static host)
 
-### Step 2: Deploy your changes
+## Setup Process
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the RuedaPro UNIPAZ repository to your local machine:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    git clone https://github.com/your-org/ruedapro-unipaz.git
+    cd ruedapro-unipaz
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Create Supabase Project">
+    1. Go to [supabase.com](https://supabase.com) and create a new project
+    2. Wait for your database to be provisioned (takes ~2 minutes)
+    3. Navigate to **Project Settings** > **API** to find your credentials
+  </Step>
 
-### Step 3: Go live
+  <Step title="Configure Supabase Connection">
+    Open `js/config.js` and replace the placeholder values with your Supabase credentials:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```javascript js/config.js
+    const SUPABASE_URL = 'https://your-project.supabase.co';
+    const SUPABASE_ANON_KEY = 'your-anon-key-here';
 
-## Next steps
+    let supabaseClient = null;
 
-Now that you have your docs running, explore these key features:
+    if (window.supabase) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+    ```
 
-<CardGroup cols={2}>
+    <Warning>
+      Keep your `SUPABASE_ANON_KEY` secure. Never commit real credentials to public repositories.
+    </Warning>
+  </Step>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+  <Step title="Set Up Database Schema">
+    Execute the Row Level Security (RLS) policies to secure your database:
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    1. Open your Supabase project dashboard
+    2. Navigate to **SQL Editor**
+    3. Run the security hardening script:
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    ```sql sql/rls_security_hardening.sql
+    -- Restricciones en tabla 'perfiles'
+    DROP POLICY IF EXISTS "Public read perfiles" ON public.perfiles;
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+    -- Authenticated users can view profiles
+    CREATE POLICY "Authenticated read perfiles" ON public.perfiles 
+    FOR SELECT 
+    TO authenticated 
+    USING (true);
 
-</CardGroup>
+    -- Public users can only read evaluated student profiles
+    CREATE POLICY "Public read evaluated estudiantes" ON public.perfiles 
+    FOR SELECT 
+    TO anon
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.proyecto_estudiantes pe
+            JOIN public.proyectos p ON p.id = pe.proyecto_id
+            WHERE pe.estudiante_id = perfiles.id
+            AND p.estado = 'Evaluado'
+        )
+    );
+    ```
+
+    <Note>
+      RLS policies ensure that anonymous users can only view data for evaluated projects, protecting student and evaluation data during the judging process.
+    </Note>
+  </Step>
+
+  <Step title="Deploy Your Application">
+    Deploy the static site to your preferred hosting platform:
+
+    <CodeGroup>
+      ```bash Netlify
+      # Install Netlify CLI
+      npm install -g netlify-cli
+
+      # Deploy
+      netlify deploy --prod
+      ```
+
+      ```bash Vercel
+      # Install Vercel CLI
+      npm install -g vercel
+
+      # Deploy
+      vercel --prod
+      ```
+
+      ```bash GitHub Pages
+      # Push to gh-pages branch
+      git checkout -b gh-pages
+      git push origin gh-pages
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Create Your First Admin User">
+    Create the initial administrator account directly in Supabase:
+
+    1. Go to **Authentication** > **Users** in your Supabase dashboard
+    2. Click **Add User** and fill in:
+       - Email: `admin@unipaz.edu.co`
+       - Password: Choose a strong password
+       - User Metadata: Add the following JSON:
+
+    ```json
+    {
+      "nombre": "Administrator",
+      "rol": "admin"
+    }
+    ```
+
+    3. Confirm email verification (or disable it in Auth settings for testing)
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Once deployed, test your installation:
+
+1. **Navigate to your site URL**
+2. **Click "Ingreso Admin"** (Admin Login)
+3. **Log in** with your admin credentials
+4. **You should see the admin dashboard** with options to:
+   - Create docente (professor) accounts
+   - Create estudiante (student) accounts
+   - Register projects
+
+## Security Considerations
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  RuedaPro UNIPAZ includes built-in XSS protection through the `escapeHTML()` function:
+
+  ```javascript js/config.js
+  function escapeHTML(str) {
+      if (typeof str !== 'string') return str;
+      return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+  }
+  ```
+
+  All user-generated content is sanitized before rendering.
 </Note>
+
+## Next Steps
+
+Your RuedaPro UNIPAZ platform is now ready! Continue with:
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users-gear" href="/guides/admin-guide">
+    Learn how to create and manage professors and students
+  </Card>
+  <Card title="Project Setup" icon="folder-tree" href="/features/project-management">
+    Set up projects and assign evaluators
+  </Card>
+  <Card title="Evaluation Process" icon="clipboard-check" href="/features/evaluation-system">
+    Understand the rubric-based evaluation workflow
+  </Card>
+  <Card title="Deploy Guide" icon="cloud-arrow-up" href="/deployment/setup">
+    Advanced deployment configurations
+  </Card>
+</CardGroup>
+
+## Need Help?
+
+If you encounter issues during setup:
+
+- Check that your Supabase URL and key are correct
+- Verify RLS policies are applied correctly
+- Ensure the Supabase JavaScript library is loading (check browser console)
+- Confirm your database tables are created
+
+For detailed troubleshooting, see the [Deployment Guide](/deployment/setup).

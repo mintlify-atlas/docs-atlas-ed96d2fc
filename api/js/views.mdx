@@ -1,0 +1,586 @@
+---
+title: View Functions
+description: HTML rendering functions for all application views
+---
+
+## Overview
+
+View functions generate HTML strings for different pages and dashboards in RuedaPro UNIPAZ. Each function returns a complete HTML structure that gets injected into the `#app-content` container.
+
+## Public View Functions
+
+### renderHomeView()
+
+Renders the home page with hero section, news cards, and results preview.
+
+**Signature:**
+```javascript
+function renderHomeView()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the home page structure
+</ParamField>
+
+**Description:**
+
+Generates the landing page with call-to-action buttons, news section, and preview of historical results.
+
+**Sections:**
+1. **Hero Section**: Main heading, description, and CTA buttons
+   - View Results button
+   - Docente Login button
+   - Estudiante Login button
+2. **News Section**: Three news cards showing event updates
+3. **Results Preview**: Link to historical rankings
+
+**Usage:**
+```javascript
+case 'home':
+  appContent.innerHTML = renderHomeView();
+  break;
+```
+
+**Key Features:**
+- Responsive grid layout for news cards
+- FontAwesome icons for visual enhancement
+- Navigation buttons using `onclick="navigateTo()"`
+
+---
+
+### renderGaleriaView()
+
+Renders the project gallery page showing photos from past editions.
+
+**Signature:**
+```javascript
+function renderGaleriaView()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the gallery page structure
+</ParamField>
+
+**Description:**
+
+Displays a gallery organized by academic periods (year and semester) with placeholder images and captions.
+
+**Structure:**
+- Page header with title and description
+- Sections grouped by academic period:
+  - Year 2026 / Semester 1
+  - Year 2025 / Semester 2
+  - Year 2025 / Semester 1
+- Gallery grid with icon placeholders and captions
+
+**Usage:**
+```javascript
+case 'galeria':
+  appContent.innerHTML = renderGaleriaView();
+  break;
+```
+
+**CSS Classes:**
+- `.gallery-grid` - Grid container for images
+- `.gallery-item` - Individual image container with caption overlay
+
+---
+
+### renderResultsView()
+
+Renders the historical results page with filtering and ranking display.
+
+**Signature:**
+```javascript
+function renderResultsView()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the results page structure
+</ParamField>
+
+**Description:**
+
+Displays a filterable ranking of evaluated projects. Calls `loadHistoricalRankings()` after a 100ms timeout to populate data.
+
+**Features:**
+- **Filter Bar**: Dropdowns for year, semester, and category
+- **Filter Button**: Triggers `loadHistoricalRankings()`
+- **Results Container**: `#results-data-container` for dynamic content
+- **Initial State**: Loading spinner
+
+**Usage:**
+```javascript
+case 'results':
+  appContent.innerHTML = renderResultsView();
+  // loadHistoricalRankings() called automatically via setTimeout
+  break;
+```
+
+**Filter Options:**
+- **Year**: 2026, 2025, 2024, 2023
+- **Semester**: 1 (First), 2 (Second)
+- **Category**: Desarrollo, Propuesta, Aplicación
+
+**Related Functions:**
+- `loadHistoricalRankings()` - Fetches and displays ranking data
+
+---
+
+### renderLoginView(role)
+
+Renders a role-specific login form.
+
+**Signature:**
+```javascript
+function renderLoginView(role)
+```
+
+<ParamField path="role" type="string" required>
+  User role for this login portal: 'docente', 'estudiante', or 'admin'
+</ParamField>
+
+<ParamField path="Returns" type="string">
+  HTML string containing the login form
+</ParamField>
+
+**Description:**
+
+Generates a customized login form based on the specified role. The form title and destination route change per role.
+
+**Role-Specific Titles:**
+- `'docente'` → "Ingreso Docente Evaluador"
+- `'estudiante'` → "Ingreso Portal Estudiantes"
+- `'admin'` → "Ingreso de Administrador"
+
+**Form Elements:**
+- Email input: `#login-email`
+- Password input: `#login-password`
+- Error display: `#login-error`
+- Submit button calls `handleLogin(event, role)`
+
+**Usage:**
+```javascript
+case 'login-docente':
+  appContent.innerHTML = renderLoginView('docente');
+  break;
+  
+case 'login-estudiante':
+  appContent.innerHTML = renderLoginView('estudiante');
+  break;
+```
+
+**Related Functions:**
+- [handleLogin()](/api/js/auth#handleloginevent-role) - Processes login
+
+---
+
+## Dashboard View Functions
+
+### renderDocenteDashboard()
+
+Renders the docente (professor/evaluator) dashboard with project assignments.
+
+**Signature:**
+```javascript
+function renderDocenteDashboard()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the docente dashboard
+</ParamField>
+
+**Description:**
+
+Creates a complete dashboard for docentes showing assigned projects, statistics, and profile management. Automatically calls `loadDocenteProjects()` and `docenteShowTab('pendientes')` after 100ms.
+
+**Layout Components:**
+1. **Sidebar Navigation**:
+   - Asignados / Pendientes tab
+   - Evaluaciones enviadas tab
+   - Mi perfil tab
+   - Cerrar sesión button
+
+2. **Header Section**:
+   - Personalized greeting with docente name
+   - Subtitle
+
+3. **Statistics Cards**:
+   - Total Asignados: `#doc-stat-asignados`
+   - Pendientes: `#doc-stat-pendientes`
+   - Enviados: `#doc-stat-enviados`
+
+4. **Content Tabs**:
+   - **Pendientes Tab** (`#doc-tab-pendientes`):
+     - Table of projects awaiting evaluation
+     - "Calificar" button to start evaluation
+     - Table body: `#docente-pendientes-tbody`
+   
+   - **Enviadas Tab** (`#doc-tab-enviadas`):
+     - Table of completed evaluations
+     - Shows final scores
+     - Table body: `#docente-enviadas-tbody`
+   
+   - **Perfil Tab** (`#doc-tab-perfil`):
+     - Avatar display
+     - Full name
+     - Role display
+
+**Usage:**
+```javascript
+case 'dashboard-docente':
+  if (currentProfile?.rol === 'docente') {
+    appContent.innerHTML = renderDocenteDashboard();
+  }
+  break;
+```
+
+**Related Functions:**
+- `loadDocenteProjects()` - Fetches project assignments from database
+- `docenteShowTab(tabName)` - Switches between tabs
+
+---
+
+### renderEstudianteDashboard()
+
+Renders the student dashboard showing their project evaluations.
+
+**Signature:**
+```javascript
+function renderEstudianteDashboard()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the student dashboard
+</ParamField>
+
+**Description:**
+
+Creates a dashboard for students to view their assigned projects and evaluation results. Automatically calls `loadEstudianteDashboard()` after 100ms.
+
+**Features:**
+- **Logout Link**: Top-right corner
+- **Page Title**: "Mis Proyectos Asignados"
+- **Data Container**: `#estudiante-data-container`
+- **Initial State**: Loading spinner
+
+**Display States:**
+1. **Loading**: Spinner with "Buscando tus datos..."
+2. **No Projects**: Empty state message
+3. **Pending Projects**: Shows project info with "not yet evaluated" message
+4. **Evaluated Projects**: Displays:
+   - Project name and category
+   - Period (semester/year)
+   - Average score (calculated from all evaluators)
+   - Feedback from each evaluator
+
+**Usage:**
+```javascript
+case 'dashboard-estudiante':
+  if (currentProfile?.rol === 'estudiante') {
+    appContent.innerHTML = renderEstudianteDashboard();
+  }
+  break;
+```
+
+**Related Functions:**
+- `loadEstudianteDashboard()` - Fetches student's projects and evaluations
+
+---
+
+### renderAdminDashboard()
+
+Renders the administrator dashboard for managing users and projects.
+
+**Signature:**
+```javascript
+function renderAdminDashboard()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the admin dashboard
+</ParamField>
+
+**Description:**
+
+Creates a comprehensive admin panel with user management and project management capabilities. Includes modals for creating, editing, and deleting records.
+
+**Layout:**
+1. **Sidebar**:
+   - Session info display
+   - Gestión de Usuarios tab
+   - Gestión de Proyectos tab
+   - Logout button
+
+2. **Users Tab** (`#admin-tab-users`):
+   - Search by name: `#admin-search-users`
+   - Filter by role: `#admin-filter-role`
+   - "Nuevo Usuario" button
+   - Users table: `#admin-users-tbody`
+   - Edit/Delete buttons per user
+
+3. **Projects Tab** (`#admin-tab-projects`):
+   - Search by name: `#admin-search-projects`
+   - Filter by category: `#admin-filter-cat`
+   - "Nuevo Proyecto" button
+   - Projects table: `#admin-projects-tbody`
+   - Delete button per project
+
+**Modals Included:**
+1. **Create User Modal** (`#create-user-modal`):
+   - Name, email, password, role inputs
+   - Form: `#create-user-form`
+   - Submit handler: `handleCreateUser(event)`
+
+2. **Edit User Modal** (`#edit-user-modal`):
+   - Update name, email, password, role
+   - Form: `#edit-user-form`
+   - Submit handler: `handleEditUser(event)`
+
+3. **Delete User Confirm Modal** (`#delete-user-confirm-modal`):
+   - Confirmation dialog
+   - Confirm button: `confirmDeleteUser()`
+
+4. **Create Project Modal** (`#create-project-modal`):
+   - Project details form
+   - Assign up to 3 evaluators
+   - Assign 1 student (optional)
+   - Submit handler: `handleCreateProject(event)`
+
+**Usage:**
+```javascript
+case 'dashboard-admin':
+  if (currentProfile?.rol === 'admin') {
+    appContent.innerHTML = renderAdminDashboard();
+    loadAdminUsers(); // Initial data load
+  }
+  break;
+```
+
+**Related Functions:**
+- `loadAdminUsers()` - Fetches all users
+- `loadAdminProjects()` - Fetches all projects
+- `adminShowTab(tab)` - Switches between Users/Projects tabs
+- `filterAdminUsers()` - Client-side user filtering
+- `filterAdminProjects()` - Client-side project filtering
+- `showCreateUserModal()` - Opens user creation modal
+- `showCreateProjectModal()` - Opens project creation modal
+
+---
+
+### renderEvaluacionView()
+
+Renders the project evaluation form with rubric and timer.
+
+**Signature:**
+```javascript
+function renderEvaluacionView()
+```
+
+<ParamField path="Returns" type="string">
+  HTML string containing the evaluation interface
+</ParamField>
+
+**Description:**
+
+Creates an interactive evaluation form with a detailed rubric, countdown timer, and submission confirmation. Used by docentes to grade student projects.
+
+**Components:**
+
+1. **Back Button**: Returns to docente dashboard
+
+2. **Evaluation Header** (`.eval-header`):
+   - Project name and details
+   - Category badge
+   - Student names
+   - Evaluator name
+   - Academic period
+   - **Timer Box**: `#eval-timer` (15:00 countdown)
+
+3. **Rubric Table** (`.rubric-table`):
+   - 9 evaluation criteria rows
+   - 4 performance level columns (1.0-2.9, 3.0-3.9, 4.0-4.4, 4.5-5.0)
+   - Score input column (1-5 range, 0.1 step)
+   - Each input has class `.rubric-input`
+
+**Evaluation Criteria:**
+1. Planteamiento del problema
+2. Justificación
+3. Objetivo general
+4. Objetivos específicos
+5. Estado del arte / Antecedentes
+6. Metodología de desarrollo propuesta
+7. Metodología de investigación propuesta
+8. Viabilidad del proyecto
+9. Claridad de la presentación
+
+4. **Evaluation Footer** (`.eval-footer`):
+   - **Observations**: Textarea for feedback
+   - **Final Score Box**:
+     - Auto-calculated average: `#final-score`
+     - "Enviar calificación" button → `showConfirmModal()`
+
+**Usage:**
+```javascript
+case 'evaluacion':
+  if (currentProfile?.rol === 'docente') {
+    appContent.innerHTML = renderEvaluacionView();
+    if (data && data.projectId) {
+      initEvaluacionLogic(data.projectId);
+    }
+  }
+  break;
+```
+
+**Related Functions:**
+- `initEvaluacionLogic(projectId)` - Initializes timer and score calculation
+- `updateFinalScore()` - Recalculates average on input change
+- `showConfirmModal()` - Shows confirmation before submission
+- `submitEvaluation()` - Saves evaluation to database
+
+---
+
+## Key Dashboard Functions
+
+### loadAdminUsers()
+
+Fetches and displays all users in the admin users table.
+
+**Signature:**
+```javascript
+async function loadAdminUsers()
+```
+
+**Behavior:**
+- Queries `perfiles` table ordered by `created_at` descending
+- Caches results in `adminUsersCache`
+- Calls `renderAdminUsersTable(data)` to display
+- Shows error message on failure
+
+**Table Body:** `#admin-users-tbody`
+
+---
+
+### loadDocenteProjects()
+
+Fetches projects assigned to the current docente.
+
+**Signature:**
+```javascript
+async function loadDocenteProjects()
+```
+
+**Behavior:**
+- Queries `proyecto_evaluadores` table with project details
+- Filters by `evaluador_id` matching `currentProfile.id`
+- Separates into pending and submitted evaluations
+- Updates statistics counters
+- Populates both tables:
+  - `#docente-pendientes-tbody`
+  - `#docente-enviadas-tbody`
+
+**Project States:**
+- **Pending**: No evaluation record exists for current docente
+- **Submitted**: Evaluation record found with final score
+
+---
+
+### loadEstudianteDashboard()
+
+Fetches projects and evaluations for the current student.
+
+**Signature:**
+```javascript
+async function loadEstudianteDashboard()
+```
+
+**Behavior:**
+- Queries `proyecto_estudiantes` with project and evaluation details
+- Filters by `estudiante_id` matching `currentProfile.id`
+- For each project:
+  - If not evaluated: Shows "pending evaluation" message
+  - If evaluated: Displays average score and all evaluator feedback
+- Calculates average from multiple evaluators
+- Shows detailed observations from each evaluator
+
+**Container:** `#estudiante-data-container`
+
+---
+
+## HTML Structure Patterns
+
+All view functions return template literal strings:
+
+```javascript
+function renderSomeView() {
+  return `
+    <div class="container">
+      <h1>Page Title</h1>
+      <!-- Page content -->
+    </div>
+  `;
+}
+```
+
+### Common Patterns
+
+**Cards:**
+```html
+<div class="card" style="padding: 2rem;">
+  <!-- Card content -->
+</div>
+```
+
+**Badges:**
+```html
+<span class="badge badge-info">Desarrollo</span>
+<span class="badge badge-success">Evaluado</span>
+<span class="badge badge-danger">Admin</span>
+```
+
+**Tables:**
+```html
+<div class="table-container">
+  <table class="data-table">
+    <thead><!-- Headers --></thead>
+    <tbody id="dynamic-tbody"><!-- Rows --></tbody>
+  </table>
+</div>
+```
+
+**Forms:**
+```html
+<form onsubmit="handleSubmit(event)">
+  <input type="text" id="input-id" required>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+```
+
+## CSS Variable Usage
+
+All views use CSS custom properties for theming:
+
+```css
+color: var(--text-primary);
+background: var(--bg-surface);
+border: 1px solid var(--border-color);
+```
+
+**Common Variables:**
+- `--primary-color` - Brand primary color
+- `--text-primary` - Main text color
+- `--text-secondary` - Secondary text color
+- `--bg-base` - Page background
+- `--bg-surface` - Card/panel background
+- `--border-color` - Border color
+- `--status-danger` - Error/delete color
+- `--status-success` - Success color
+
+## Security Note
+
+All user-generated content should be escaped using the `escapeHTML()` utility:
+
+```javascript
+const safeName = escapeHTML(user.nombre);
+const safeProjectName = escapeHTML(project.nombre);
+```

@@ -1,0 +1,278 @@
+---
+title: "Authentication System"
+description: "Secure role-based authentication powered by Supabase"
+icon: "shield-halved"
+---
+
+## Overview
+
+RuedaPro UNIPAZ implements a robust authentication system using **Supabase Auth**, providing secure access control for three distinct user roles: administrators, teachers (docentes), and students (estudiantes). The system ensures that each user type has access only to their designated features and data.
+
+## Authentication Architecture
+
+### Supabase Integration
+
+The platform uses Supabase as its authentication backend:
+
+```javascript config.js
+const SUPABASE_URL = 'https://gbjmulgwdjxqehhlrqjy.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+
+let supabaseClient = null;
+if (window.supabase) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+```
+
+The Supabase client is initialized globally and provides:
+- JWT-based session management
+- Secure password authentication
+- User metadata storage
+- Built-in security features
+
+## Role-Based Access Control
+
+### User Roles
+
+The system supports three primary roles:
+
+<CardGroup cols={3}>
+  <Card title="Admin" icon="user-shield" color="#ef4444">
+    Full system access for user and project management
+  </Card>
+  <Card title="Docente" icon="chalkboard-user" color="#3b82f6">
+    Teacher/evaluator role for assessing student projects
+  </Card>
+  <Card title="Estudiante" icon="graduation-cap" color="#10b981">
+    Student role for viewing projects and results
+  </Card>
+</CardGroup>
+
+### Role Storage
+
+Roles are stored in the user's JWT metadata during account creation:
+
+```javascript auth.js:65-72
+const userMeta = currentUser.user_metadata || {};
+currentProfile = {
+    id: currentUser.id,
+    nombre: userMeta.nombre || currentUser.email,
+    rol: userMeta.rol || 'estudiante'
+};
+```
+
+<Warning>
+  User roles are read directly from JWT `user_metadata` to avoid database round-trips and RLS policy issues during login. This makes authentication faster and more secure.
+</Warning>
+
+## Login Flow
+
+### Authentication Process
+
+The login process follows these steps:
+
+<Steps>
+  <Step title="User Submits Credentials">
+    User enters email and password on their role-specific login page (admin, docente, or estudiante)
+  </Step>
+  
+  <Step title="Supabase Authentication">
+    Credentials are validated against Supabase Auth using `signInWithPassword()`
+    
+    ```javascript auth.js:49-52
+    const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+        email: email,
+        password: password
+    });
+    ```
+  </Step>
+  
+  <Step title="Role Verification">
+    The system verifies that the user's assigned role matches the login portal they're using
+    
+    ```javascript auth.js:75-95
+    if (role === 'docente' && currentProfile.rol === 'docente') {
+        updateGlobalHeader();
+        navigateTo('dashboard-docente');
+    } else if (role === 'estudiante' && currentProfile.rol === 'estudiante') {
+        updateGlobalHeader();
+        navigateTo('dashboard-estudiante');
+    } else if (role === 'admin' && currentProfile.rol === 'admin') {
+        updateGlobalHeader();
+        navigateTo('dashboard-admin');
+    } else {
+        // Role mismatch - deny access
+        errorDiv.textContent = `No tienes permiso de "${role}". Tu rol asignado es: "${currentProfile.rol}".`;
+        await supabaseClient.auth.signOut();
+    }
+    ```
+  </Step>
+  
+  <Step title="Session Creation">
+    Upon successful authentication and role verification, the user is redirected to their role-specific dashboard
+  </Step>
+</Steps>
+
+### Role Enforcement
+
+<Warning>
+  If a user tries to access a portal that doesn't match their assigned role, the system:
+  1. Displays an error message indicating the role mismatch
+  2. Immediately signs them out for security
+  3. Prevents access to unauthorized features
+  
+  This prevents privilege escalation and ensures users can only access features appropriate to their role.
+</Warning>
+
+## Session Management
+
+### Session Restoration
+
+When a user returns to the platform, their session is automatically restored:
+
+```javascript auth.js:4-29
+async function restoreSession() {
+    if(!supabaseClient) return;
+    try {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        
+        if (session && session.user) {
+            currentUser = session.user;
+            const userMeta = currentUser.user_metadata || {};
+            currentProfile = {
+                id: currentUser.id,
+                nombre: userMeta.nombre || currentUser.email,
+                rol: userMeta.rol || 'estudiante'
+            };
+            
+            // Try fetching avatar if relevant
+            const { data: pData } = await supabaseClient.from('perfiles').select('avatar_url').eq('id', currentProfile.id).single();
+            if (pData && pData.avatar_url) {
+                currentProfile.avatar_url = pData.avatar_url;
+            }
+        }
+    } catch (e) {
+        console.error("Session restore err:", e);
+    }
+    updateGlobalHeader();
+}
+```
+
+This function:
+- Checks for an existing Supabase session
+- Restores user profile data from JWT metadata
+- Fetches additional profile information (like avatars) from the database
+- Updates the UI to reflect the logged-in state
+
+### Logout Process
+
+```javascript auth.js:98-106
+async function handleLogout() {
+    if(supabaseClient) {
+        await supabaseClient.auth.signOut();
+    }
+    currentUser = null;
+    currentProfile = null;
+    updateGlobalHeader();
+    navigateTo('home');
+}
+```
+
+Logout clears:
+- Supabase authentication session
+- Local user and profile objects
+- UI state (header, navigation)
+
+## User Metadata Storage
+
+### Profile Structure
+
+User profiles contain:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Unique user identifier (from Supabase Auth) |
+| `nombre` | String | Full name of the user |
+| `rol` | String | User role (`admin`, `docente`, or `estudiante`) |
+| `avatar_url` | String | Optional profile picture URL |
+
+### Database Integration
+
+While roles are stored in JWT metadata, additional profile information is stored in the `perfiles` table:
+
+- **Primary authentication data**: Stored in Supabase Auth (email, password, role)
+- **Extended profile data**: Stored in `perfiles` database table (avatar, additional info)
+- **Role assignment**: Managed by admin users through the user management interface
+
+## Security Features
+
+### XSS Protection
+
+The platform includes HTML sanitization to prevent XSS attacks:
+
+```javascript config.js:11-19
+function escapeHTML(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+```
+
+### Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Password Requirements">
+    - Minimum 8 characters required
+    - Managed through Supabase Auth policies
+    - Can be reset through admin user management
+  </Accordion>
+  
+  <Accordion title="Session Security">
+    - JWT tokens with automatic expiration
+    - Secure HTTPS-only transmission
+    - Server-side validation through Supabase
+  </Accordion>
+  
+  <Accordion title="Role Isolation">
+    - Role verification on every sensitive action
+    - Database-level Row Level Security (RLS) policies
+    - UI-level access control based on user role
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  **Important Security Notes:**
+  
+  - Never store passwords in plain text
+  - All authentication operations go through Supabase's secure backend
+  - Admin credentials should be carefully protected
+  - Regular security audits recommended for production deployments
+</Warning>
+
+## Error Handling
+
+### Authentication Errors
+
+The system provides clear error messages for common authentication failures:
+
+- **Invalid credentials**: "Autenticación fallida: Credenciales incorrectas o cuentas inexistentes."
+- **Role mismatch**: "No tienes permiso de '[role]'. Tu rol asignado es: '[actual_role]'."
+- **Network errors**: "El cliente Supabase no está inicializado. Posible fallo de red."
+
+All errors are logged to the console for debugging while displaying user-friendly messages in the UI.
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users-gear" href="/guides/admin-guide">
+    Learn how admins create and manage user accounts
+  </Card>
+  <Card title="Project Management" icon="folder-tree" href="/features/project-management">
+    Understand how role-based access controls project operations
+  </Card>
+</CardGroup>

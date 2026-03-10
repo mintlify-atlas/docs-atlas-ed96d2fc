@@ -1,0 +1,335 @@
+---
+title: Router API
+description: Client-side routing and theme management for the RuedaPro application
+---
+
+## Overview
+
+The Router API provides client-side navigation and theme toggle functionality for RuedaPro UNIPAZ. It handles route-to-view mapping, mobile menu interactions, and dark/light theme persistence.
+
+## Functions
+
+### initThemeToggle()
+
+Initializes the theme toggle button and applies saved or system-preferred theme.
+
+**Signature:**
+```javascript
+function initThemeToggle()
+```
+
+<ParamField path="Returns" type="void">
+  No return value
+</ParamField>
+
+**Description:**
+
+Sets up the theme toggle button functionality and applies the user's saved theme preference (or system preference if no saved preference exists). Supports light and dark modes with persistent storage.
+
+**Behavior:**
+1. Gets the `#theme-toggle` button element
+2. Checks for saved preference in `localStorage` key: `ruedapro-theme`
+3. Falls back to system preference using `prefers-color-scheme` media query
+4. Applies dark theme if saved or system prefers dark:
+   - Sets `data-theme="dark"` on `<body>`
+   - Changes icon from moon to sun
+5. Attaches click event listener to toggle between themes:
+   - Toggles `data-theme` attribute on `<body>`
+   - Swaps icon between `fa-moon` and `fa-sun`
+   - Saves preference to `localStorage`
+
+**Usage Example:**
+```javascript
+// Initialize on app startup
+window.addEventListener('DOMContentLoaded', () => {
+  initThemeToggle();
+  initRouter();
+  restoreSession();
+});
+```
+
+**HTML Structure Required:**
+```html
+<button id="theme-toggle">
+  <i class="fa-solid fa-moon"></i>
+</button>
+```
+
+**CSS Usage:**
+```css
+[data-theme="dark"] {
+  --bg-base: #1a1a1a;
+  --text-primary: #ffffff;
+  /* ... dark theme variables */
+}
+
+[data-theme="light"] {
+  --bg-base: #ffffff;
+  --text-primary: #000000;
+  /* ... light theme variables */
+}
+```
+
+**LocalStorage Keys:**
+- `ruedapro-theme`: Stores `'light'` or `'dark'`
+
+---
+
+### initRouter()
+
+Initializes the client-side router by attaching click handlers to navigation links.
+
+**Signature:**
+```javascript
+function initRouter()
+```
+
+<ParamField path="Returns" type="void">
+  No return value
+</ParamField>
+
+**Description:**
+
+Sets up event listeners for all navigation links with `data-route` attributes and handles mobile menu toggle functionality.
+
+**Behavior:**
+1. Selects all elements with `[data-route]` attribute
+2. Gets mobile menu button and desktop nav elements
+3. Attaches click handler to mobile menu button to toggle `.show` class
+4. For each navigation link:
+   - Prevents default anchor behavior
+   - Extracts route from `data-route` attribute
+   - Calls `navigateTo(route)`
+   - Closes mobile menu if open
+   - Updates active state styling
+
+**Usage Example:**
+```javascript
+// Initialize on page load
+initRouter();
+
+// Navigation HTML
+<nav class="desktop-nav">
+  <div class="nav-links">
+    <a href="#" data-route="home" class="active">Inicio</a>
+    <a href="#" data-route="galeria">Galería</a>
+    <a href="#" data-route="results">Resultados</a>
+  </div>
+</nav>
+
+<button id="mobile-menu-btn">
+  <i class="fa-solid fa-bars"></i>
+</button>
+```
+
+**DOM Elements Required:**
+- `[data-route]` - Navigation links
+- `.desktop-nav` - Main navigation container
+- `#mobile-menu-btn` - Mobile hamburger menu button
+- `.nav-links` - Navigation links container
+
+**Related Functions:**
+- [navigateTo()](#navigatetroute-data) - Called for each navigation
+
+---
+
+### navigateTo(route, data)
+
+Navigates to a specific route by rendering the corresponding view.
+
+**Signature:**
+```javascript
+function navigateTo(route, data = null)
+```
+
+<ParamField path="route" type="string" required>
+  The route identifier to navigate to
+</ParamField>
+
+<ParamField path="data" type="object" default="null">
+  Optional data to pass to the view (e.g., project ID for evaluation)
+</ParamField>
+
+<ParamField path="Returns" type="void">
+  No return value
+</ParamField>
+
+**Description:**
+
+Core routing function that maps route strings to view render functions and handles role-based access control for protected routes.
+
+**Available Routes:**
+
+| Route | View Function | Access |
+|-------|---------------|--------|
+| `home` | `renderHomeView()` | Public |
+| `galeria` | `renderGaleriaView()` | Public |
+| `results` | `renderResultsView()` | Public |
+| `login-docente` | `renderLoginView('docente')` | Public |
+| `login-estudiante` | `renderLoginView('estudiante')` | Public |
+| `login-admin` | `renderLoginView('admin')` | Public |
+| `dashboard-docente` | `renderDocenteDashboard()` | Docente only |
+| `dashboard-estudiante` | `renderEstudianteDashboard()` | Estudiante only |
+| `dashboard-admin` | `renderAdminDashboard()` + `loadAdminUsers()` | Admin only |
+| `evaluacion` | `renderEvaluacionView()` + `initEvaluacionLogic()` | Docente only |
+| default | `renderHomeView()` | Public |
+
+**Behavior:**
+1. Gets the `#app-content` container element
+2. Matches route against switch cases
+3. Checks user permissions for protected routes
+4. Renders HTML by calling appropriate view function
+5. Injects HTML into `#app-content`
+6. Calls post-render initialization functions if needed
+7. Scrolls to top of page
+8. Redirects to home if access denied
+
+**Access Control:**
+- Dashboard routes check `currentProfile.rol` matches required role
+- Unauthorized users redirected to 'home'
+- No authentication required for public routes
+
+**Usage Examples:**
+
+```javascript
+// Basic navigation
+navigateTo('results');
+
+// Navigate with data
+navigateTo('evaluacion', { projectId: 'abc-123' });
+
+// In HTML onclick
+<button onclick="navigateTo('dashboard-docente')">Mi Panel</button>
+
+// After successful login
+if (currentProfile.rol === 'admin') {
+  navigateTo('dashboard-admin');
+}
+```
+
+**Protected Route Example:**
+```javascript
+case 'dashboard-docente':
+  if (currentProfile?.rol === 'docente') {
+    appContent.innerHTML = renderDocenteDashboard();
+  } else {
+    navigateTo('home'); // Redirect unauthorized users
+  }
+  break;
+```
+
+**Passing Data Example:**
+```javascript
+// Navigating to evaluation with project ID
+navigateTo('evaluacion', { projectId: projectIdValue });
+
+// In route handler
+case 'evaluacion':
+  if (currentProfile?.rol === 'docente') {
+    appContent.innerHTML = renderEvaluacionView();
+    if (data && data.projectId) {
+      initEvaluacionLogic(data.projectId);
+    }
+  }
+  break;
+```
+
+**Related Functions:**
+- [View Render Functions](/api/js/views) - Generate HTML for each view
+- [initRouter()](#initrouter) - Sets up route navigation
+
+---
+
+### updateGlobalHeader()
+
+Updates the global header UI based on authentication state. Documented in [Authentication API](/api/js/auth#updateglobalheader).
+
+---
+
+## Route-to-View Mapping
+
+The routing system uses a simple state machine pattern:
+
+```javascript
+switch(route) {
+  case 'route-name':
+    // Optional: Check permissions
+    // Render view
+    appContent.innerHTML = renderView();
+    // Optional: Initialize view logic
+    break;
+}
+```
+
+### Public Routes
+Public routes are accessible to all users without authentication:
+- Home, Gallery, Results
+- All login portals
+
+### Protected Routes
+Protected routes require authentication and specific roles:
+
+```javascript
+if (currentProfile?.rol === 'required-role') {
+  // Render dashboard
+} else {
+  navigateTo('home'); // Redirect
+}
+```
+
+## Mobile Menu Behavior
+
+The router handles responsive mobile menu interactions:
+
+1. **Toggle Menu**: Click hamburger button to show/hide navigation
+2. **Close on Navigate**: Automatically closes menu when route selected
+3. **CSS Classes**: Adds/removes `.show` class on `.desktop-nav`
+
+```javascript
+if(desktopNav.classList.contains('show')) {
+  desktopNav.classList.remove('show');
+}
+```
+
+## Navigation State
+
+The router updates active link styling:
+
+```javascript
+// Remove active from all links
+document.querySelectorAll('.nav-links a').forEach(el => 
+  el.classList.remove('active')
+);
+
+// Add active to current link
+if(link.closest('.nav-links')) {
+  link.classList.add('active');
+}
+```
+
+## Integration Example
+
+```javascript
+// Complete app initialization
+window.addEventListener('DOMContentLoaded', async () => {
+  // 1. Initialize theme
+  initThemeToggle();
+  
+  // 2. Restore user session
+  await restoreSession();
+  
+  // 3. Initialize router
+  initRouter();
+  
+  // 4. Navigate to default route
+  navigateTo('home');
+});
+```
+
+## Performance Considerations
+
+- Views are rendered on-demand, not preloaded
+- DOM elements replaced entirely on each navigation
+- Scroll position resets to top on every navigation
+- No history management (no back button support)
+- State preserved in global variables between navigations

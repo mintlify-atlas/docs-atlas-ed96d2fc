@@ -1,0 +1,521 @@
+---
+title: "Evaluation System"
+description: "Comprehensive rubric-based project evaluation with multiple evaluators"
+icon: "clipboard-check"
+---
+
+## Overview
+
+The Evaluation System in RuedaPro UNIPAZ provides a standardized, rubric-based assessment framework for engineering projects. Multiple evaluators can independently score projects across 9 comprehensive criteria, with automatic averaging to calculate final grades.
+
+## Evaluation Criteria
+
+### 9-Point Rubric
+
+Projects are assessed using a detailed rubric with **9 evaluation criteria**:
+
+<AccordionGroup>
+  <Accordion title="1. Planteamiento del problema (Problem Statement)">
+    Evaluates how clearly and precisely the problem is defined.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Problem not clearly defined, lacks context and delimitation
+    - **3.0-3.9**: General description with limited context and partial delimitation
+    - **4.0-4.4**: Clear, contextualized, and delimited problem with technological need
+    - **4.5-5.0**: Highly precise formulation with rigorous delimitation and solid technical context
+  </Accordion>
+  
+  <Accordion title="2. Justificación (Justification)">
+    Assesses the importance and relevance of the project.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Weak or non-existent arguments for project importance
+    - **3.0-3.9**: General justification with basic relevance arguments
+    - **4.0-4.4**: Clear justification with academic support and technological relevance
+    - **4.5-5.0**: Solid and convincing justification showing academic, technological, and social impact
+  </Accordion>
+  
+  <Accordion title="3. Objetivo general (General Objective)">
+    Reviews the main goal's formulation and alignment with the problem.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Incorrectly formulated or unrelated to the problem
+    - **3.0-3.9**: Comprehensible but weak wording or partial alignment
+    - **4.0-4.4**: Clear, well-written, and aligned with the problem
+    - **4.5-5.0**: Precise, measurable, perfectly aligned with rigorous technical writing
+  </Accordion>
+  
+  <Accordion title="4. Objetivos específicos (Specific Objectives)">
+    Evaluates the specific goals' quality and contribution to the general objective.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Not presented or don't contribute to general objective, inadequate verbs
+    - **3.0-3.9**: Present but with weaknesses in wording or logical sequence
+    - **4.0-4.4**: Clear, measurable, and coherent with general objective
+    - **4.5-5.0**: Well-structured, measurable, methodologically coherent, defines clear path
+  </Accordion>
+  
+  <Accordion title="5. Estado del arte / Antecedentes (State of the Art)">
+    Assesses the literature review and background research.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: No background or irrelevant, without academic support
+    - **3.0-3.9**: Basic background with little depth or few sources
+    - **4.0-4.4**: Adequate review of previous relevant work
+    - **4.5-5.0**: Critical analysis of scientific and technological background with updated sources
+  </Accordion>
+  
+  <Accordion title="6. Metodología de desarrollo propuesta (Development Methodology)">
+    Reviews the technical development approach.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Does not define how the technological solution will be built
+    - **3.0-3.9**: Generally describes the development process
+    - **4.0-4.4**: Clear methodology with defined phases coherent to project type
+    - **4.5-5.0**: Rigorous, structured methodology aligned with standards (agile or traditional)
+  </Accordion>
+  
+  <Accordion title="7. Metodología de investigación propuesta (Research Methodology)">
+    Evaluates the research approach and design.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Does not identify approach or methodological design
+    - **3.0-3.9**: Basic approach with limited description
+    - **4.0-4.4**: Adequately defines approach, type, and research design
+    - **4.5-5.0**: Solid methodological foundation, coherent and fully justified
+  </Accordion>
+  
+  <Accordion title="8. Viabilidad del proyecto (Project Viability)">
+    Assesses technical, economic, and operational feasibility.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Does not analyze technical, economic, or operational feasibility
+    - **3.0-3.9**: Superficial viability analysis with little evidence
+    - **4.0-4.4**: Clear viability in technical and operational terms
+    - **4.5-5.0**: Comprehensive evaluation of technical, economic, operational, and temporal viability
+  </Accordion>
+  
+  <Accordion title="9. Claridad de la presentación (Presentation Clarity)">
+    Evaluates the quality and professionalism of the presentation.
+    
+    **Scoring Guide:**
+    - **1.0-2.9**: Disorganized, unclear exposition without logical structure
+    - **3.0-3.9**: Comprehensible but with order or clarity failures
+    - **4.0-4.4**: Clear, organized presentation with good argumentative structure
+    - **4.5-5.0**: Fluid, professional, well-structured presentation with topic mastery
+  </Accordion>
+</AccordionGroup>
+
+## Scoring Mechanism
+
+### Score Range
+
+<CardGroup cols={4}>
+  <Card title="1.0 - 2.9" icon="xmark" color="#ef4444">
+    **No cumple**
+    
+    Does not meet requirements
+  </Card>
+  <Card title="3.0 - 3.9" icon="minus" color="#f59e0b">
+    **Cumplimiento básico**
+    
+    Basic compliance
+  </Card>
+  <Card title="4.0 - 4.4" icon="check" color="#3b82f6">
+    **Buen nivel**
+    
+    Good level
+  </Card>
+  <Card title="4.5 - 5.0" icon="star" color="#10b981">
+    **Excelente**
+    
+    Excellent
+  </Card>
+</CardGroup>
+
+Each criterion is scored independently on a scale from **1.0 to 5.0** with 0.1 precision:
+
+```javascript evaluacionView.js:44
+<input type="number" min="1" max="5" step="0.1" class="rubric-input" value="0.0">
+```
+
+### Input Validation
+
+The system automatically clamps scores to valid ranges:
+
+```javascript evaluacionView.js:213-226
+function updateFinalScore() {
+    const inputs = document.querySelectorAll('.rubric-input');
+    let sum = 0;
+    let count = 0;
+    inputs.forEach(i => {
+        let val = parseFloat(i.value) || 0;
+        if(val > 5) { val = 5; i.value = 5; } // Clamp max
+        if(val < 0) { val = 0; i.value = 0; } // Clamp min
+        sum += val;
+        count++;
+    });
+    const avg = sum / count;
+    document.getElementById('final-score').innerText = avg.toFixed(1);
+}
+```
+
+<Note>
+  Scores are clamped between 0.0 and 5.0, and the minimum submittable score is 1.0 per the validation logic.
+</Note>
+
+## Evaluation Interface
+
+### Evaluation Header
+
+When a docente starts an evaluation, they see:
+
+```javascript evaluacionView.js:10-22
+<div class="eval-header">
+    <div class="eval-info">
+        <h2>Sistema IoT para Invernaderos Inteligentes</h2>
+        <p><strong>Categoría:</strong> <span class="badge badge-info">Desarrollo</span></p>
+        <p><strong>Integrantes:</strong> Ana López, Luis Perez</p>
+        <p><strong>Evaluador:</strong> Prof. Carlos Martínez</p>
+        <p><strong>Periodo:</strong> 2026-1</p>
+    </div>
+    <div class="timer-box">
+        <p>Tiempo Restante</p>
+        <div class="time" id="eval-timer">15:00</div>
+    </div>
+</div>
+```
+
+**Key Features:**
+- Project name and category
+- Student team members
+- Current evaluator name
+- Academic period
+- **15-minute countdown timer**
+
+### Countdown Timer
+
+A 15-minute timer helps evaluators manage their time:
+
+```javascript evaluacionView.js:189-204
+clearInterval(evalTimerInterval);
+let timeRemaining = 15 * 60; // 15 mins in seconds
+const timerEl = document.getElementById('eval-timer');
+
+evalTimerInterval = setInterval(() => {
+    timeRemaining--;
+    if(timeRemaining < 0) {
+        clearInterval(evalTimerInterval);
+        timerEl.style.color = "var(--status-danger)";
+        return;
+    }
+    let m = Math.floor(timeRemaining / 60);
+    let s = timeRemaining % 60;
+    timerEl.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}, 1000);
+```
+
+<Warning>
+  The timer is informational only - evaluators can still submit after time expires. However, the timer turns red when it reaches zero to signal the recommended time limit.
+</Warning>
+
+## Real-Time Score Calculation
+
+### Automatic Average
+
+The final score updates automatically as evaluators enter criterion scores:
+
+```javascript evaluacionView.js:207-211
+const inputs = document.querySelectorAll('.rubric-input');
+inputs.forEach(input => {
+    input.addEventListener('input', updateFinalScore);
+});
+```
+
+The **final score** is the arithmetic mean of all 9 criteria:
+
+$$
+\text{Final Score} = \frac{\sum_{i=1}^{9} \text{Criterion}_i}{9}
+$$
+
+### Score Display
+
+```javascript evaluacionView.js:121-129
+<div class="final-score-box">
+    <div>
+        <h3>Calificación Final</h3>
+        <p>Promedio automático de los criterios evaluados</p>
+    </div>
+    <div class="score-display" id="final-score">0.0</div>
+    <button class="btn btn-primary" onclick="showConfirmModal()">
+        <i class="fa-solid fa-paper-plane"></i> Enviar calificación
+    </button>
+</div>
+```
+
+## Observations and Feedback
+
+### Feedback Text Area
+
+Evaluators can provide written feedback:
+
+```javascript evaluacionView.js:117-119
+<label>Observaciones y Retroalimentación:</label>
+<textarea class="observations" placeholder="Escriba aquí los comentarios, sugerencias de mejora y observaciones generales sobre el proyecto..."></textarea>
+```
+
+**Observations Include:**
+- Strengths and areas for improvement
+- Specific suggestions for enhancement
+- General comments on project quality
+- Constructive criticism
+
+This text is stored in the `evaluaciones.observaciones` field and can be reviewed later by students and administrators.
+
+## Submission Process
+
+### Evaluation Workflow
+
+<Steps>
+  <Step title="Complete Rubric">
+    Evaluator scores all 9 criteria (minimum 1.0 per criterion)
+    
+    ```javascript evaluacionView.js:232-236
+    if (finalScore < 1.0) {
+        alert("Debe calificar todos los criterios. El puntaje mínimo es 1.0");
+        return;
+    }
+    ```
+  </Step>
+  
+  <Step title="Add Observations">
+    Optional but recommended feedback text
+  </Step>
+  
+  <Step title="Click Submit">
+    Evaluator clicks "Enviar calificación" button
+  </Step>
+  
+  <Step title="Confirmation Modal">
+    System displays confirmation dialog:
+    
+    ```javascript evaluacionView.js:238-251
+    <div class="modal-overlay active" id="confirm-modal">
+        <div class="modal-content">
+            <i class="fa-solid fa-triangle-exclamation modal-icon"></i>
+            <h3>Confirmar Envío</h3>
+            <p>¿Está seguro de enviar esta calificación? Una vez enviada <strong>no podrá modificarse</strong>.</p>
+            <div class="modal-actions">
+                <button onclick="closeModal()">Cancelar</button>
+                <button onclick="submitEvaluation()">Sí, enviar</button>
+            </div>
+        </div>
+    </div>
+    ```
+  </Step>
+  
+  <Step title="Database Insertion">
+    System stores evaluation data:
+    
+    ```javascript evaluacionView.js:273-296
+    // Collect rubric data
+    const rubricData = [];
+    inputs.forEach((input, index) => {
+        rubricData.push({
+            criterioIndex: index + 1,
+            puntaje: parseFloat(input.value) || 0
+        });
+    });
+    
+    const finalScore = parseFloat(document.getElementById('final-score').innerText);
+    const observaciones = document.querySelector('.observations').value.trim();
+    
+    // Insert evaluation record
+    const { error: evalErr } = await supabaseClient
+        .from('evaluaciones')
+        .insert([{
+            proyecto_id: currentEvaluationProjectId,
+            evaluador_id: currentProfile.id,
+            puntaje_final: finalScore,
+            observaciones: observaciones,
+            rubrica_detalle: rubricData
+        }]);
+    ```
+  </Step>
+  
+  <Step title="Check Completion Status">
+    System checks if ALL assigned evaluators have submitted evaluations
+    
+    ```javascript evaluacionView.js:300-318
+    // Count assigned evaluators
+    const { data: assignedData } = await supabaseClient
+        .from('proyecto_evaluadores')
+        .select('evaluador_id', { count: 'exact' })
+        .eq('proyecto_id', currentEvaluationProjectId);
+    const totalEvaluators = assignedData.length;
+    
+    // Count completed evaluations
+    const { data: evalsData } = await supabaseClient
+        .from('evaluaciones')
+        .select('evaluador_id', { count: 'exact' })
+        .eq('proyecto_id', currentEvaluationProjectId);
+    const totalEvaluated = evalsData.length;
+    ```
+  </Step>
+  
+  <Step title="Update Project Status">
+    If all evaluators have submitted, project status changes to "Evaluado":
+    
+    ```javascript evaluacionView.js:320-327
+    if (totalEvaluated >= totalEvaluators && totalEvaluators > 0) {
+        const { error: updErr } = await supabaseClient
+            .from('proyectos')
+            .update({ estado: 'Evaluado' })
+            .eq('id', currentEvaluationProjectId);
+    }
+    ```
+  </Step>
+  
+  <Step title="Success Confirmation">
+    Evaluator sees success message and returns to dashboard
+    
+    ```javascript evaluacionView.js:329-334
+    clearInterval(evalTimerInterval);
+    closeModal();
+    currentEvaluationProjectId = null;
+    alert("¡Evaluación enviada con éxito!");
+    navigateTo('dashboard-docente');
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  **Important**: Once an evaluation is submitted, it **cannot be modified**. This ensures fairness and prevents score manipulation after submission.
+</Warning>
+
+## Multiple Evaluators
+
+### Independent Evaluations
+
+Each assigned evaluator:
+- Completes the rubric independently
+- Cannot see other evaluators' scores
+- Submits their own observations
+- Has their submission stored separately
+
+### Final Score Calculation
+
+When a project has multiple evaluators, the **final project score** is calculated as:
+
+$$
+\text{Project Final Score} = \frac{\sum_{j=1}^{n} \text{Evaluator}_j\text{Score}}{n}
+$$
+
+Where $n$ is the number of evaluators who have submitted evaluations.
+
+```javascript resultsView.js:96-100
+let avgScore = 0;
+if (p.evaluaciones && p.evaluaciones.length > 0) {
+    const totalScore = p.evaluaciones.reduce((acc, curr) => acc + parseFloat(curr.puntaje_final || 0), 0);
+    avgScore = parseFloat((totalScore / p.evaluaciones.length).toFixed(1));
+}
+```
+
+<Note>
+  This averaging system ensures fair grading even if evaluators have slightly different scoring tendencies.
+</Note>
+
+## Evaluation Data Structure
+
+### Database Schema
+
+**evaluaciones table:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Unique evaluation identifier |
+| `proyecto_id` | UUID | Foreign key to proyectos table |
+| `evaluador_id` | UUID | Foreign key to perfiles table (docente) |
+| `puntaje_final` | Float | Average score (1.0-5.0) |
+| `observaciones` | Text | Evaluator's written feedback |
+| `rubrica_detalle` | JSONB | Array of criterion scores |
+| `created_at` | Timestamp | Submission timestamp |
+
+**rubrica_detalle structure:**
+
+```json
+[
+  { "criterioIndex": 1, "puntaje": 4.5 },
+  { "criterioIndex": 2, "puntaje": 4.2 },
+  { "criterioIndex": 3, "puntaje": 4.0 },
+  { "criterioIndex": 4, "puntaje": 4.3 },
+  { "criterioIndex": 5, "puntaje": 3.8 },
+  { "criterioIndex": 6, "puntaje": 4.1 },
+  { "criterioIndex": 7, "puntaje": 3.9 },
+  { "criterioIndex": 8, "puntaje": 4.4 },
+  { "criterioIndex": 9, "puntaje": 4.6 }
+]
+```
+
+This structure preserves individual criterion scores for potential detailed analysis.
+
+## Error Handling
+
+### Validation Errors
+
+<AccordionGroup>
+  <Accordion title="Incomplete Rubric">
+    If final score is below 1.0:
+    
+    ```
+    "Debe calificar todos los criterios. El puntaje mínimo es 1.0"
+    ```
+  </Accordion>
+  
+  <Accordion title="Session Errors">
+    If user is not authenticated or project ID is missing:
+    
+    ```
+    "Error de sesión o proyecto no seleccionado."
+    ```
+  </Accordion>
+  
+  <Accordion title="Database Errors">
+    If evaluation insertion fails:
+    
+    ```
+    "Ocurrió un error al enviar la calificación."
+    ```
+    
+    Error details are logged to console for debugging.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Fair Evaluation" icon="balance-scale">
+    - Read full rubric descriptors before scoring
+    - Use the full 1.0-5.0 scale range
+    - Be consistent across criteria
+    - Provide constructive feedback
+  </Card>
+  
+  <Card title="Detailed Feedback" icon="comment-dots">
+    - Write specific, actionable observations
+    - Highlight both strengths and improvements
+    - Reference specific project aspects
+    - Keep feedback professional and constructive
+  </Card>
+</CardGroup>
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Project Management" icon="folder-tree" href="/features/project-management">
+    See how projects are created and assigned to evaluators
+  </Card>
+  <Card title="Results Gallery" icon="ranking-star" href="/features/results-gallery">
+    View how evaluated projects appear in public rankings
+  </Card>
+</CardGroup>

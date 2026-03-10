@@ -1,0 +1,91 @@
+---
+title: "Introduction"
+description: "Welcome to RuedaPro UNIPAZ - Academic platform for managing engineering project evaluations"
+---
+
+## What is RuedaPro UNIPAZ?
+
+RuedaPro UNIPAZ is a comprehensive web platform designed to manage, evaluate, and publish results of the Engineering Projects Wheel event at UNIPAZ University. It streamlines the entire lifecycle of student project evaluations, from registration to final results publication.
+
+<CardGroup cols={2}>
+  <Card title="For Students" icon="user-graduate" href="/guides/student-guide">
+    Track your project evaluations and receive detailed feedback from evaluators
+  </Card>
+  <Card title="For Teachers" icon="chalkboard-user" href="/guides/teacher-guide">
+    Evaluate student projects using structured rubrics and provide comprehensive feedback
+  </Card>
+  <Card title="For Administrators" icon="user-shield" href="/guides/admin-guide">
+    Manage users, projects, and oversee the entire evaluation process
+  </Card>
+  <Card title="Public Gallery" icon="trophy" href="/features/results-gallery">
+    Browse historical project rankings and celebrate excellence
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="Multi-Role Authentication" icon="lock">
+    Secure role-based access control with three user types: Students, Teachers, and Administrators. Each role has specific permissions and dedicated dashboards powered by Supabase authentication.
+  </Accordion>
+  
+  <Accordion title="Project Management" icon="folder-tree">
+    Complete project lifecycle management including registration, evaluator assignment, status tracking, and student-project associations. Projects are organized by semester, year, and category.
+  </Accordion>
+  
+  <Accordion title="Evaluation System" icon="clipboard-check">
+    Structured evaluation rubrics for teachers with scoring across multiple criteria. Teachers can provide detailed observations and final scores, with automatic average calculation across multiple evaluators.
+  </Accordion>
+  
+  <Accordion title="Results Gallery" icon="chart-line">
+    Public-facing results page displaying historical rankings and project achievements. Filter by semester, year, and category to explore past winners and standout projects.
+  </Accordion>
+  
+  <Accordion title="Row-Level Security" icon="shield-halved">
+    Advanced database security with Supabase RLS policies ensuring users can only access data they're authorized to view. Public users see only evaluated projects, while authenticated users have role-specific access.
+  </Accordion>
+  
+  <Accordion title="Responsive Design" icon="mobile-screen">
+    Mobile-friendly interface with light and dark theme support. Accessible navigation and optimized layouts for all device sizes.
+  </Accordion>
+</AccordionGroup>
+
+## Technology Stack
+
+RuedaPro UNIPAZ is built with modern web technologies:
+
+- **Frontend**: Vanilla JavaScript with a custom SPA router
+- **Backend**: Supabase (PostgreSQL database, authentication, row-level security)
+- **Styling**: Custom CSS with CSS variables for theming
+- **Icons**: Font Awesome 6
+- **Hosting**: Static site deployment compatible
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Set up RuedaPro UNIPAZ in minutes with our step-by-step guide
+  </Card>
+  <Card title="Deployment" icon="server" href="/deployment/setup">
+    Learn how to deploy and configure the platform for your institution
+  </Card>
+  <Card title="Features Overview" icon="list-check" href="/features">
+    Explore all available features and capabilities
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Dive into the technical documentation and database schema
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+RuedaPro UNIPAZ is an open-source project. Get involved:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/danielpose1996-stack/ruedadeproyectos">
+    View source code, report issues, and contribute
+  </Card>
+  <Card title="User Guides" icon="book" href="/guides/admin-guide">
+    Comprehensive guides for all user roles
+  </Card>
+</CardGroup>

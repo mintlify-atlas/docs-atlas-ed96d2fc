@@ -1,0 +1,403 @@
+---
+title: 'API Overview'
+description: 'Architectural overview of the RuedaPro UNIPAZ platform'
+---
+
+## Introduction
+
+RuedaPro UNIPAZ is a client-side web application built with vanilla JavaScript and Supabase as the backend-as-a-service. The platform manages engineering project evaluations for UNIPAZ's Computer Engineering program.
+
+## System Architecture
+
+### High-Level Architecture
+
+The application follows a simple but effective architecture:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Browser Client                       │
+│  ┌────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │  HTML/CSS  │  │  JavaScript │  │  Supabase SDK   │  │
+│  │   Views    │←→│   Router    │←→│     Client      │  │
+│  └────────────┘  └─────────────┘  └─────────────────┘  │
+└──────────────────────────────────────────┬──────────────┘
+                                           │
+                                           │ HTTPS/WebSocket
+                                           │
+                              ┌────────────▼──────────────┐
+                              │   Supabase Backend        │
+                              │  ┌─────────────────────┐  │
+                              │  │  PostgreSQL DB      │  │
+                              │  │  (with RLS)         │  │
+                              │  └─────────────────────┘  │
+                              │  ┌─────────────────────┐  │
+                              │  │  Auth Service       │  │
+                              │  └─────────────────────┘  │
+                              │  ┌─────────────────────┐  │
+                              │  │  Storage Service    │  │
+                              │  └─────────────────────┘  │
+                              └───────────────────────────┘
+```
+
+### Core Components
+
+#### 1. Frontend Structure
+
+The application is organized into logical modules:
+
+- **Configuration** (`js/config.js`) - Supabase client initialization
+- **Authentication** (`js/auth.js`) - Session management and login/logout
+- **Router** (`js/router.js`) - Client-side routing and navigation
+- **Views** (`js/views/*`) - UI rendering functions
+- **Main** (`js/main.js`) - Application initialization
+
+#### 2. Supabase Client Initialization
+
+The Supabase client is initialized at application startup in `js/config.js`:
+
+```javascript
+const SUPABASE_URL = 'https://gbjmulgwdjxqehhlrqjy.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+
+let supabaseClient = null;
+
+if (window.supabase) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+```
+
+The `supabaseClient` global variable is available throughout the application for database operations and authentication.
+
+## Data Flow
+
+### 1. Application Lifecycle
+
+```
+1. Page Load
+   ↓
+2. DOMContentLoaded Event
+   ↓
+3. Initialize Theme Toggle
+   ↓
+4. Initialize Router
+   ↓
+5. Navigate to 'home' route
+   ↓
+6. Restore Session (async)
+   ↓
+7. Update Global Header
+```
+
+### 2. Authentication Flow
+
+```
+User Login Request
+   ↓
+handleLogin(event, role)
+   ↓
+supabaseClient.auth.signInWithPassword()
+   ↓
+Extract user_metadata (role, nombre)
+   ↓
+Verify role matches login type
+   ↓
+Update currentUser & currentProfile
+   ↓
+Navigate to role-specific dashboard
+   ↓
+updateGlobalHeader()
+```
+
+### 3. Data Query Flow
+
+The application uses Supabase's query builder to interact with the PostgreSQL database:
+
+```javascript
+// Example: Fetch student projects with evaluations
+const { data: assignments, error } = await supabaseClient
+    .from('proyecto_estudiantes')
+    .select(`
+        proyecto_id,
+        proyectos (
+            id, nombre, categoria, semestre, anio, estado,
+            evaluaciones (
+                puntaje_final,
+                observaciones,
+                perfiles (nombre)
+            )
+        )
+    `)
+    .eq('estudiante_id', currentProfile.id);
+```
+
+## View Rendering System
+
+### Render Pattern
+
+All views follow a consistent pattern:
+
+1. **View Function** - Returns HTML string
+2. **Loader Function** - Fetches data and updates DOM
+3. **Event Handlers** - Attached via inline handlers or after render
+
+Example:
+
+```javascript
+// 1. Render function returns HTML
+function renderEstudianteDashboard() {
+    setTimeout(() => {
+        loadEstudianteDashboard(); // Call loader
+    }, 100);
+    
+    return `<div id="estudiante-data-container">...</div>`;
+}
+
+// 2. Loader fetches data
+async function loadEstudianteDashboard() {
+    const { data, error } = await supabaseClient
+        .from('proyecto_estudiantes')
+        .select('...')
+        .eq('estudiante_id', currentProfile.id);
+    
+    // Update DOM
+    container.innerHTML = generateHTML(data);
+}
+```
+
+## Routing Mechanism
+
+The application uses a simple client-side router implemented in `js/router.js`:
+
+### Route Registration
+
+Navigation links use `data-route` attributes:
+
+```html
+<a href="#" data-route="home">Inicio</a>
+<a href="#" data-route="dashboard-docente">Dashboard</a>
+```
+
+### Navigation Function
+
+```javascript
+function navigateTo(route, data = null) {
+    const appContent = document.getElementById('app-content');
+    
+    switch(route) {
+        case 'home':
+            appContent.innerHTML = renderHomeView();
+            break;
+        case 'dashboard-docente':
+            if (currentProfile?.rol === 'docente') {
+                appContent.innerHTML = renderDocenteDashboard();
+            } else {
+                navigateTo('home'); // Redirect if unauthorized
+            }
+            break;
+        // ... more routes
+    }
+    
+    window.scrollTo(0, 0);
+}
+```
+
+### Route Protection
+
+Routes are protected by checking `currentProfile.rol` before rendering protected views.
+
+## State Management
+
+The application maintains global state using two key variables:
+
+### Current User State
+
+```javascript
+let currentUser = null;      // Supabase auth user object
+let currentProfile = null;   // Application profile object
+```
+
+### Profile Structure
+
+```javascript
+currentProfile = {
+    id: 'uuid',              // User UUID from Supabase Auth
+    nombre: 'John Doe',      // User's full name
+    rol: 'docente',          // Role: 'estudiante', 'docente', or 'admin'
+    avatar_url: 'url'        // Optional avatar URL
+};
+```
+
+### State Updates
+
+State is updated in three scenarios:
+
+1. **Login** - `handleLogin()` sets user and profile
+2. **Session Restore** - `restoreSession()` restores from Supabase session
+3. **Logout** - `handleLogout()` clears state
+
+## Database Interaction Patterns
+
+### 1. Simple Query
+
+```javascript
+const { data, error } = await supabaseClient
+    .from('proyectos')
+    .select('*')
+    .eq('estado', 'Activo');
+```
+
+### 2. Nested Relationships
+
+```javascript
+const { data, error } = await supabaseClient
+    .from('proyecto_evaluadores')
+    .select(`
+        proyecto_id,
+        proyectos (
+            id,
+            nombre,
+            evaluaciones (puntaje_final)
+        )
+    `)
+    .eq('evaluador_id', currentProfile.id);
+```
+
+### 3. Insert Operation
+
+```javascript
+const { data, error } = await supabaseClient
+    .from('evaluaciones')
+    .insert({
+        proyecto_id: projectId,
+        evaluador_id: currentProfile.id,
+        puntaje_final: score,
+        observaciones: comments
+    });
+```
+
+### 4. Update Operation
+
+```javascript
+const { data, error } = await supabaseClient
+    .from('proyectos')
+    .update({ estado: 'Evaluado' })
+    .eq('id', projectId);
+```
+
+## Security Features
+
+### XSS Protection
+
+All user input is sanitized using the `escapeHTML()` helper:
+
+```javascript
+function escapeHTML(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+```
+
+Usage:
+
+```javascript
+htmlContent += `<h2>${escapeHTML(p.nombre)}</h2>`;
+```
+
+### Row-Level Security (RLS)
+
+Supabase enforces Row-Level Security policies at the database level to ensure users can only access authorized data.
+
+### Role-Based Access Control
+
+Routes and functionality are protected by role checks:
+
+```javascript
+if (currentProfile?.rol === 'docente') {
+    // Render docente view
+} else {
+    navigateTo('home'); // Redirect unauthorized users
+}
+```
+
+## API Sections
+
+Explore detailed documentation for specific API areas:
+
+<CardGroup cols={2}>
+  <Card title="Authentication API" icon="lock" href="/api/authentication">
+    User login, logout, and session management
+  </Card>
+  <Card title="Database Schema" icon="database" href="/api/schema/tables">
+    Database tables, relationships, and constraints
+  </Card>
+  <Card title="Views API" icon="window" href="/api/js/views">
+    View rendering functions and patterns
+  </Card>
+  <Card title="Router API" icon="route" href="/api/js/router">
+    Client-side routing and navigation
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### 1. Error Handling
+
+Always handle errors from Supabase operations:
+
+```javascript
+try {
+    const { data, error } = await supabaseClient
+        .from('proyectos')
+        .select('*');
+    
+    if (error) throw error;
+    
+    // Process data
+} catch (e) {
+    console.error("Error:", e);
+    // Show user-friendly error message
+}
+```
+
+### 2. Loading States
+
+Provide feedback during async operations:
+
+```javascript
+submitBtn.disabled = true;
+submitBtn.textContent = 'Cargando...';
+
+// Perform operation
+
+submitBtn.disabled = false;
+submitBtn.textContent = 'Enviar';
+```
+
+### 3. Data Validation
+
+Validate data before database operations:
+
+```javascript
+if (!email || !password) {
+    errorDiv.textContent = 'Por favor completa todos los campos';
+    return;
+}
+```
+
+## Performance Considerations
+
+1. **Lazy Loading** - Views fetch data only when rendered
+2. **Eager Loading** - Use nested selects to reduce round trips
+3. **Client-side Caching** - User session cached in browser
+4. **Minimal Dependencies** - Vanilla JS with single external dependency (Supabase)
+
+## Next Steps
+
+- Learn about [Authentication API](/api/authentication)
+- Explore the [Database Schema](/api/schema/tables)
+- Understand [View Components](/api/js/views)

@@ -1,0 +1,287 @@
+---
+title: 'Administrator Guide'
+description: 'Complete guide for managing users, projects, and evaluations in RuedaPro UNIPAZ'
+icon: 'shield-halved'
+---
+
+# Administrator Guide
+
+Welcome to the Administrator Guide for RuedaPro UNIPAZ. As an administrator, you have full control over user management and project administration for the engineering project evaluation platform.
+
+## Accessing the Admin Dashboard
+
+After logging in with your administrator credentials, you'll be directed to the Admin Dashboard, which consists of two main sections:
+
+- **Gestión de Usuarios** (User Management)
+- **Gestión de Proyectos** (Project Management)
+
+The dashboard features a sidebar navigation on the left and a main content area displaying your selected management panel.
+
+---
+
+## User Management
+
+The User Management panel allows you to create, edit, and delete user accounts for teachers (docentes) and students (estudiantes).
+
+### Viewing Users
+
+When you access the **Gestión de Usuarios** tab, you'll see:
+
+- A table displaying all registered users with columns for:
+  - **Nombre** (Full Name)
+  - **Rol** (Role: docente or estudiante)
+  - **Fecha Registro** (Registration Date)
+  - **Acciones** (Actions: Edit and Delete buttons)
+
+### Searching and Filtering Users
+
+Use the search and filter tools located above the user table:
+
+1. **Search by name**: Type in the search box labeled "Buscar por nombre..." to find users by their name
+2. **Filter by role**: Use the dropdown menu to filter by:
+   - **Todos los roles** (All roles)
+   - **Docentes** (Teachers)
+   - **Estudiantes** (Students)
+
+The table updates automatically as you type or change filters (300ms debounce).
+
+### Creating a New User
+
+<Steps>
+  <Step title="Open the Create User Modal">
+    Click the **"+ Nuevo Usuario"** button in the top-right corner of the User Management panel.
+  </Step>
+  
+  <Step title="Fill in User Details">
+    Complete all required fields in the form:
+    
+    - **Nombre Completo**: Full name of the user (e.g., "Carlos Martínez")
+    - **Correo Electrónico**: Valid email address (e.g., "correo@ejemplo.com")
+    - **Contraseña Provisional**: Initial password (minimum 8 characters)
+    - **Rol**: Select either:
+      - **Docente Evaluador** (Teacher/Evaluator)
+      - **Estudiante** (Student)
+  </Step>
+  
+  <Step title="Submit the Form">
+    Click **"Crear Usuario"** to create the account. The button will show "Creando..." while processing.
+  </Step>
+  
+  <Step title="Verify Creation">
+    The modal will close automatically upon success, and the user list will refresh to show the new account.
+  </Step>
+</Steps>
+
+<Tip>
+  Inform users of their provisional password and recommend they change it upon first login.
+</Tip>
+
+### Editing an Existing User
+
+<Steps>
+  <Step title="Locate the User">
+    Find the user in the table using search or filtering if needed.
+  </Step>
+  
+  <Step title="Open Edit Modal">
+    Click the **pencil icon** (Edit button) in the Actions column for that user.
+  </Step>
+  
+  <Step title="Modify User Information">
+    In the Edit User modal, you can update:
+    
+    - **Nombre Completo**: Change the user's full name (required)
+    - **Nuevo Correo Electrónico**: Update email (optional - leave blank to keep current)
+    - **Nueva Contraseña**: Reset password (optional - leave blank to keep current, minimum 8 characters if provided)
+    - **Rol**: Change between docente and estudiante
+  </Step>
+  
+  <Step title="Save Changes">
+    Click **"Guardar Cambios"** to apply the updates. The system will show "Guardando..." during processing.
+  </Step>
+</Steps>
+
+<Info>
+  Email and password fields are optional when editing. Only fill them if you need to update those specific values.
+</Info>
+
+### Deleting a User
+
+<Warning>
+  User deletion is **permanent and irreversible**. All associated data will be removed from the system.
+</Warning>
+
+<Steps>
+  <Step title="Locate the User">
+    Find the user you want to delete in the users table.
+  </Step>
+  
+  <Step title="Click Delete Button">
+    Click the **trash icon** (Delete button) in the Actions column.
+  </Step>
+  
+  <Step title="Confirm Deletion">
+    A confirmation modal will appear with a warning message:
+    
+    *"¿Estás seguro de que deseas eliminar a este usuario de forma permanente? Por motivos de seguridad, toma en cuenta que esta acción no se puede deshacer y eliminará todos sus datos asociados."*
+    
+    Review carefully, then click **"Sí, Eliminar"** to proceed or **"Cancelar"** to abort.
+  </Step>
+  
+  <Step title="Verify Deletion">
+    The user will be removed from the system, and the table will refresh automatically.
+  </Step>
+</Steps>
+
+<Warning>
+  Administrator accounts cannot be deleted through the interface. Only docente and estudiante roles show delete buttons.
+</Warning>
+
+---
+
+## Project Management
+
+The Project Management panel allows you to register new engineering projects, assign evaluators, and manage existing projects throughout the evaluation cycle.
+
+### Viewing Projects
+
+Switch to the **Gestión de Proyectos** tab from the sidebar to see all registered projects in a table with:
+
+- **Nombre del Proyecto** (Project Name)
+- **Categoría** (Category: Desarrollo, Propuesta, Aplicación)
+- **Semestre** (Semester: 1° or 2°)
+- **Año** (Year)
+- **Docente Asignado** (Assigned Teachers/Evaluators)
+- **Estado** (Status: Pendiente, Evaluado, Vencida)
+- **Acciones** (Actions: Delete button)
+
+### Searching and Filtering Projects
+
+Use the search and filter controls above the projects table:
+
+1. **Search by project name**: Type in the "Buscar proyecto..." field
+2. **Filter by category**: Select from:
+   - **Todas las categorías** (All categories)
+   - **Desarrollo** (Development)
+   - **Propuesta** (Proposal)
+   - **Aplicación** (Application)
+
+### Creating a New Project
+
+<Steps>
+  <Step title="Open Project Creation Modal">
+    Click the **"+ Nuevo Proyecto"** button in the top-right corner of the Project Management panel.
+  </Step>
+  
+  <Step title="Enter Project Information">
+    Fill in the following required fields:
+    
+    **Basic Information:**
+    - **Nombre del Proyecto**: Full project title (e.g., "Sistema IoT para Invernaderos")
+    - **Categoría**: Select one of:
+      - **Desarrollo** (Development)
+      - **Propuesta** (Proposal)
+      - **Aplicación** (Application)
+    
+    **Academic Period:**
+    - **Semestre**: Choose **1** (First Semester) or **2** (Second Semester)
+    - **Año**: Enter the year (default: 2026, range: 2020-2035)
+  </Step>
+  
+  <Step title="Assign Evaluators">
+    Assign up to 3 evaluators from the available docentes:
+    
+    - **Evaluador 1**: Select from dropdown (or leave "-- Sin asignar --")
+    - **Evaluador 2**: Select from dropdown (or leave "-- Sin asignar --")
+    - **Evaluador 3**: Select from dropdown (or leave "-- Sin asignar --")
+    
+    <Info>
+      At least **one evaluator** must be assigned. The system prevents selecting the same evaluator multiple times by disabling already-selected options in other dropdowns.
+    </Info>
+  </Step>
+  
+  <Step title="Assign Student (Optional)">
+    Select the student who is the author of this project from the **"Asignar Estudiante"** dropdown.
+    
+    This field is optional and can be left as "-- Sin asignar --" if not yet determined.
+  </Step>
+  
+  <Step title="Register the Project">
+    Click **"Registrar Proyecto"** to create the project. The button will show "Guardando..." during processing.
+    
+    The system will:
+    - Create the project record with status "Pendiente"
+    - Assign the selected evaluators via the `proyecto_evaluadores` table
+    - Link the student (if selected) via the `proyecto_estudiantes` table
+  </Step>
+</Steps>
+
+<Tip>
+  **Best Practice**: Assign all evaluators at project creation to ensure balanced workload distribution and avoid delays in the evaluation process.
+</Tip>
+
+### Deleting a Project
+
+<Warning>
+  Project deletion is **permanent and irreversible**. All evaluation data associated with this project will be lost.
+</Warning>
+
+<Steps>
+  <Step title="Locate the Project">
+    Find the project in the projects table using search or filters.
+  </Step>
+  
+  <Step title="Click Delete Button">
+    Click the **trash icon** (red delete button) in the Actions column.
+  </Step>
+  
+  <Step title="Confirm Deletion">
+    A browser confirmation dialog will ask:
+    
+    *"¿Eliminar este proyecto? Esta acción no se puede deshacer."*
+    
+    Click **OK** to proceed or **Cancel** to abort.
+  </Step>
+  
+  <Step title="Verify Deletion">
+    The project will be removed, and the table will refresh automatically.
+  </Step>
+</Steps>
+
+---
+
+## Project Status Overview
+
+Projects automatically transition through different states:
+
+- **Pendiente** (Pending): Newly created, awaiting evaluation
+- **Evaluado** (Evaluated): All assigned evaluators have submitted their evaluations
+- **Vencida** (Expired): Past deadline (if applicable)
+
+<Info>
+  Projects are marked as **Evaluado** automatically when all assigned evaluators submit their evaluations. The status updates occur in real-time as evaluations are completed.
+</Info>
+
+---
+
+## Logging Out
+
+To end your administrator session:
+
+1. Click **"Cerrar sesión"** (Logout) in the sidebar (bottom section, in red)
+2. You'll be redirected to the login page
+
+---
+
+## Tips for Effective Administration
+
+<Tip>
+  - **Regular Monitoring**: Check the projects table regularly to track evaluation progress
+  - **Balanced Assignment**: Distribute projects evenly among evaluators to avoid overload
+  - **Data Validation**: Verify user emails are correct before creating accounts to ensure users can access the system
+  - **Period Planning**: Create projects for the entire semester at the beginning to give evaluators visibility into their workload
+</Tip>
+
+<Warning>
+  Always double-check before deleting users or projects. These operations cannot be undone.
+</Warning>

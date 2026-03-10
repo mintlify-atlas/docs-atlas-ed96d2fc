@@ -1,0 +1,445 @@
+---
+title: Features Overview
+description: Comprehensive overview of RuedaPro UNIPAZ capabilities
+icon: sparkles
+---
+
+RuedaPro UNIPAZ is a comprehensive academic platform designed specifically for managing engineering project evaluations at UNIPAZ. Built with security, usability, and academic rigor in mind.
+
+## Core Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Role Authentication" icon="shield-halved" href="#authentication">
+    Secure role-based access for admins, professors, and students
+  </Card>
+  <Card title="Project Management" icon="folder-tree" href="#project-management">
+    Complete project lifecycle from registration to evaluation
+  </Card>
+  <Card title="Rubric-Based Evaluation" icon="clipboard-check" href="#evaluation-system">
+    Standardized 9-criteria evaluation with live scoring
+  </Card>
+  <Card title="Results Dashboard" icon="chart-line" href="#results-and-gallery">
+    Public ranking system and project gallery
+  </Card>
+  <Card title="Real-Time Sync" icon="arrows-rotate" href="#real-time-features">
+    Instant updates powered by Supabase
+  </Card>
+  <Card title="Security & Privacy" icon="lock" href="#security-features">
+    Row-level security and XSS protection
+  </Card>
+</CardGroup>
+
+---
+
+## Authentication
+
+### Multi-Role Access Control
+
+RuedaPro UNIPAZ supports three distinct user roles with separate login portals and dashboards:
+
+- **Admin**: Full system control - user management, project creation, and assignment
+- **Docente (Professor)**: Evaluate assigned projects using standardized rubrics
+- **Estudiante (Student)**: View evaluation results and feedback
+
+```javascript js/auth.js
+// Role verification during login
+if (role === 'docente' && currentProfile.rol === 'docente') {
+    navigateTo('dashboard-docente');
+} else if (role === 'estudiante' && currentProfile.rol === 'estudiante') {
+    navigateTo('dashboard-estudiante');
+} else if (role === 'admin' && currentProfile.rol === 'admin') {
+    navigateTo('dashboard-admin');
+} else {
+    errorDiv.textContent = `No tienes permiso de "${role}".`;
+}
+```
+
+### Session Management
+
+Automatic session restoration ensures users stay logged in across browser refreshes:
+
+```javascript js/auth.js
+async function restoreSession() {
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    if (session && session.user) {
+        currentUser = session.user;
+        const userMeta = currentUser.user_metadata || {};
+        currentProfile = {
+            id: currentUser.id,
+            nombre: userMeta.nombre || currentUser.email,
+            rol: userMeta.rol || 'estudiante'
+        };
+    }
+}
+```
+
+---
+
+## Project Management
+
+### Project Registration
+
+Administrators can create projects with comprehensive metadata:
+
+- **Project name and category** (Desarrollo, Propuesta, Aplicación)
+- **Semester and year** tracking
+- **Multiple evaluator assignment** (up to 3 professors per project)
+- **Student assignment** for authorship tracking
+
+<Note>
+  Projects must have at least one evaluator assigned before creation. The system enforces this validation to ensure all projects can be evaluated.
+</Note>
+
+### Project States
+
+Projects flow through three states:
+
+1. **Pendiente** (Pending): Awaiting evaluation from assigned professors
+2. **Evaluado** (Evaluated): All assigned evaluators have submitted scores
+3. **Vencida** (Expired): Evaluation deadline has passed
+
+```javascript js/views/adminDashboardView.js
+const estadoClass = { 
+    'Pendiente': 'badge-warning', 
+    'Evaluado': 'badge-success', 
+    'Vencida': 'badge-danger' 
+};
+```
+
+### Dynamic Evaluator Assignment
+
+The system prevents duplicate evaluator assignments with real-time dropdown validation:
+
+```javascript js/views/adminDashboardView.js
+function updateEvaluatorDropdowns() {
+    const val1 = sel1.value;
+    const val2 = sel2.value;
+    const val3 = sel3.value;
+
+    // Disable already-selected evaluators in other dropdowns
+    allDropdowns.forEach(current => {
+        const otherVals = allDropdowns
+            .filter(d => d.el !== current.el)
+            .map(d => d.val)
+            .filter(v => v !== "");
+        
+        Array.from(current.el.options).forEach(opt => {
+            if (opt.value === "") return;
+            opt.disabled = otherVals.includes(opt.value);
+        });
+    });
+}
+```
+
+---
+
+## Evaluation System
+
+### Standardized 9-Criteria Rubric
+
+Each project is evaluated using a comprehensive rubric with 9 academic criteria:
+
+1. **Planteamiento del problema** (Problem Statement)
+2. **Justificación** (Justification)
+3. **Objetivo general** (General Objective)
+4. **Objetivos específicos** (Specific Objectives)
+5. **Estado del arte / Antecedentes** (State of the Art)
+6. **Metodología de desarrollo** (Development Methodology)
+7. **Metodología de investigación** (Research Methodology)
+8. **Viabilidad del proyecto** (Project Viability)
+9. **Claridad de la presentación** (Presentation Clarity)
+
+Each criterion is scored from 1.0 to 5.0, with descriptive rubric levels:
+- **1.0 – 2.9**: Does not meet expectations
+- **3.0 – 3.9**: Basic compliance
+- **4.0 – 4.4**: Good level
+- **4.5 – 5.0**: Excellent
+
+### Live Score Calculation
+
+The final score updates automatically as professors enter grades:
+
+```javascript js/views/evaluacionView.js
+function updateFinalScore() {
+    const inputs = document.querySelectorAll('.rubric-input');
+    let sum = 0;
+    let count = 0;
+    inputs.forEach(i => {
+        let val = parseFloat(i.value) || 0;
+        if(val > 5) { val = 5; i.value = 5; }
+        if(val < 0) { val = 0; i.value = 0; }
+        sum += val;
+        count++;
+    });
+    const avg = sum / count;
+    document.getElementById('final-score').innerText = avg.toFixed(1);
+}
+```
+
+### Timed Evaluation Sessions
+
+A 15-minute countdown timer helps maintain evaluation pace during live events:
+
+```javascript js/views/evaluacionView.js
+let timeRemaining = 15 * 60; // 15 minutes
+evalTimerInterval = setInterval(() => {
+    timeRemaining--;
+    if(timeRemaining < 0) {
+        clearInterval(evalTimerInterval);
+        timerEl.style.color = "var(--status-danger)";
+        return;
+    }
+    let m = Math.floor(timeRemaining / 60);
+    let s = timeRemaining % 60;
+    timerEl.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}, 1000);
+```
+
+### Automatic State Transitions
+
+When all assigned evaluators submit their scores, the project automatically transitions to "Evaluado":
+
+```javascript js/views/evaluacionView.js
+// Count assigned evaluators
+const { data: assignedData } = await supabaseClient
+    .from('proyecto_evaluadores')
+    .select('evaluador_id', { count: 'exact' })
+    .eq('proyecto_id', currentEvaluationProjectId);
+const totalEvaluators = assignedData.length;
+
+// Count submitted evaluations
+const { data: evalsData } = await supabaseClient
+    .from('evaluaciones')
+    .select('evaluador_id', { count: 'exact' })
+    .eq('proyecto_id', currentEvaluationProjectId);
+const totalEvaluated = evalsData.length;
+
+// Update if all evaluators have submitted
+if (totalEvaluated >= totalEvaluators && totalEvaluators > 0) {
+    await supabaseClient
+        .from('proyectos')
+        .update({ estado: 'Evaluado' })
+        .eq('id', currentEvaluationProjectId);
+}
+```
+
+---
+
+## Results and Gallery
+
+### Student Dashboard
+
+Students can view their evaluation results including:
+
+- **Average score** across all evaluators
+- **Individual feedback** from each professor
+- **Project details** (category, semester, year)
+
+```javascript js/views/estudianteDashboardView.js
+const totalScore = evalDataList.reduce(
+    (acc, curr) => acc + parseFloat(curr.puntaje_final || 0), 0
+);
+const avgScore = (totalScore / evalDataList.length).toFixed(1);
+```
+
+### Public Results Gallery
+
+Completed projects are displayed in a public gallery showing:
+
+- Project names and categories
+- Final evaluation scores
+- Student authors
+- Visual representation by semester
+
+### Professor Dashboard Statistics
+
+Professors see at-a-glance metrics:
+
+- **Total assigned projects**
+- **Pending evaluations**
+- **Completed evaluations**
+
+---
+
+## Real-Time Features
+
+### Supabase Integration
+
+All data operations use Supabase's real-time database:
+
+```javascript js/config.js
+if (window.supabase) {
+    supabaseClient = window.supabase.createClient(
+        SUPABASE_URL, 
+        SUPABASE_ANON_KEY
+    );
+}
+```
+
+### Instant Dashboard Updates
+
+Dashboards refresh automatically when:
+- New users are created
+- Projects are registered
+- Evaluations are submitted
+- Project states change
+
+---
+
+## Security Features
+
+### Row-Level Security (RLS)
+
+Database access is controlled by RLS policies:
+
+**Authenticated users** can view all profiles and evaluations:
+
+```sql
+CREATE POLICY "Authenticated read perfiles" ON public.perfiles 
+FOR SELECT 
+TO authenticated 
+USING (true);
+```
+
+**Anonymous users** can only view evaluated projects:
+
+```sql
+CREATE POLICY "Public read evaluated evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyectos p
+        WHERE p.id = evaluaciones.proyecto_id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+
+### XSS Protection
+
+All user input is sanitized before rendering:
+
+```javascript js/config.js
+function escapeHTML(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+```
+
+Used throughout the application:
+
+```javascript
+<td><strong>${escapeHTML(user.nombre)}</strong></td>
+```
+
+### Secure Session Management
+
+JWT-based authentication with automatic token refresh through Supabase Auth.
+
+---
+
+## User Interface Features
+
+### Theme Support
+
+Built-in light/dark theme toggle:
+
+```html index.html
+<button class="theme-toggle" id="theme-toggle" aria-label="Toggle Dark Mode">
+    <i class="fa-solid fa-moon"></i>
+</button>
+```
+
+### Responsive Design
+
+Fully responsive layout with mobile navigation:
+
+- Desktop: Full navigation bar with user menu
+- Mobile: Hamburger menu with slide-out navigation
+- Tablet: Adaptive layouts for dashboards
+
+### Search and Filtering
+
+Real-time filtering on:
+
+- **User management**: Filter by name and role
+- **Project management**: Filter by name and category
+- **Evaluation lists**: Filter by status and semester
+
+```javascript js/views/adminDashboardView.js
+function filterAdminUsers() {
+    clearTimeout(adminUsersDebounceTimer);
+    adminUsersDebounceTimer = setTimeout(() => {
+        const search = document.getElementById('admin-search-users').value.toLowerCase();
+        const role = document.getElementById('admin-filter-role').value;
+        
+        const filtered = adminUsersCache.filter(u => {
+            const matchSearch = u.nombre.toLowerCase().includes(search);
+            const matchRole = role ? u.rol === role : true;
+            return matchSearch && matchRole;
+        });
+        
+        renderAdminUsersTable(filtered);
+    }, 300);
+}
+```
+
+### Modal Confirmations
+
+Critical actions require confirmation:
+
+- Deleting users
+- Submitting evaluations
+- Removing projects
+
+---
+
+## Technology Stack
+
+<CardGroup cols={3}>
+  <Card title="Vanilla JavaScript" icon="js">
+    No framework dependencies - pure ES6+
+  </Card>
+  <Card title="Supabase" icon="database">
+    PostgreSQL backend with real-time capabilities
+  </Card>
+  <Card title="CSS Custom Properties" icon="paintbrush">
+    Dynamic theming with CSS variables
+  </Card>
+  <Card title="Font Awesome" icon="icons">
+    Comprehensive icon library
+  </Card>
+  <Card title="SPA Router" icon="route">
+    Client-side routing without page reloads
+  </Card>
+  <Card title="Static Hosting" icon="server">
+    Deploy anywhere - no server required
+  </Card>
+</CardGroup>
+
+---
+
+## Learn More
+
+Explore detailed documentation for each feature:
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users-gear" href="/guides/admin-guide">
+    Create and manage admin, professor, and student accounts
+  </Card>
+  <Card title="Project Workflow" icon="diagram-project" href="/features/project-management">
+    Complete project lifecycle from creation to results
+  </Card>
+  <Card title="Evaluation Rubric" icon="clipboard-list" href="/features/evaluation-system">
+    Deep dive into the 9-criteria rubric system
+  </Card>
+  <Card title="Security Policies" icon="shield-check" href="/deployment/security">
+    Row-level security and data protection
+  </Card>
+</CardGroup>

@@ -1,0 +1,528 @@
+---
+title: "Security Policies"
+description: "Row-Level Security (RLS) policies and access control in the RuedaPro UNIPAZ database"
+---
+
+## Overview
+
+RuedaPro UNIPAZ implements **Row-Level Security (RLS)** using Supabase's PostgreSQL policies to control data access at the row level. This ensures that users can only access data appropriate to their role and authentication status.
+
+<Warning>
+  All policies in this document are enforced at the database level. Client-side checks alone are **not sufficient** for security. Always rely on RLS policies to protect sensitive data.
+</Warning>
+
+## Authentication Roles
+
+Supabase uses two built-in PostgreSQL roles for RLS policies:
+
+| Role | Description | Use Case |
+|------|-------------|----------|
+| `anon` | Unauthenticated users (public access) | Public ranking pages, guest browsing |
+| `authenticated` | Logged-in users | Admin, docente, and estudiante dashboards |
+
+Additionally, the application defines custom user roles in the `perfiles.rol` column:
+
+- `admin` - System administrators
+- `docente` - Faculty evaluators
+- `estudiante` - Students
+
+## perfiles Table Policies
+
+The `perfiles` table contains user profile information. Access is controlled to balance functionality with privacy.
+
+### Policy 1: Authenticated Read Access
+
+**Policy Name:** `Authenticated read perfiles`
+
+**Purpose:** Allow logged-in users to view profile information for assignments and project management.
+
+**SQL Definition:**
+
+```sql
+CREATE POLICY "Authenticated read perfiles" ON public.perfiles 
+FOR SELECT 
+TO authenticated 
+USING (true);
+```
+
+**Explanation:**
+- **Operation:** `SELECT` only
+- **Who:** All authenticated users
+- **Access:** Can read all profile records
+- **Rationale:** Necessary for admins to manage users, docentes to see evaluator names, and students to view project team members
+
+**Usage in Code:**
+
+From `adminDashboardView.js:620-624`:
+```javascript
+// Admin fetching docente profiles for assignment dropdowns
+const { data: docentes, error: errDoc } = await supabaseClient
+    .from('perfiles')
+    .select('id, nombre')
+    .eq('rol', 'docente')
+    .order('nombre');
+```
+
+---
+
+### Policy 2: Public Read for Evaluated Projects
+
+**Policy Name:** `Public read evaluated estudiantes`
+
+**Purpose:** Allow unauthenticated users to see student names **only** for projects that have been fully evaluated. This enables the public ranking page.
+
+**SQL Definition:**
+
+```sql
+CREATE POLICY "Public read evaluated estudiantes" ON public.perfiles 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyecto_estudiantes pe
+        JOIN public.proyectos p ON p.id = pe.proyecto_id
+        WHERE pe.estudiante_id = perfiles.id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+
+**Explanation:**
+- **Operation:** `SELECT` only
+- **Who:** Unauthenticated users (`anon`)
+- **Access:** Can only read profiles of students whose projects have `estado = 'Evaluado'`
+- **Privacy Protection:** Students working on pending projects remain private until evaluation is complete
+
+**Usage in Code:**
+
+From `resultsView.js:79-91`:
+```javascript
+// Public ranking page fetching evaluated projects with student names
+const { data: proyectos, error: pErr } = await supabaseClient
+    .from('proyectos')
+    .select(`
+        id, nombre, categoria, semestre, anio, estado,
+        evaluaciones ( puntaje_final ),
+        proyecto_estudiantes (
+            perfiles ( nombre )  // Only visible if estado = 'Evaluado'
+        )
+    `)
+    .eq('estado', 'Evaluado')
+    .eq('anio', year)
+    .eq('semestre', semester)
+    .eq('categoria', category);
+```
+
+<Warning>
+  **Privacy Note:** Students associated with `Pendiente` or `Vencida` projects are **not visible** to public users, protecting their privacy during the evaluation process.
+</Warning>
+
+---
+
+### Security Implications
+
+<Card title="User Enumeration Protection" icon="shield-halved">
+  Public users cannot enumerate all student names or discover students with pending projects. Only completed evaluation results are publicly visible.
+</Card>
+
+<Card title="Role Verification" icon="user-check">
+  Always verify user roles server-side. The `perfiles.rol` column is read-only for clients and must be set via Edge Functions or admin operations.
+</Card>
+
+## evaluaciones Table Policies
+
+The `evaluaciones` table stores sensitive evaluation scores and feedback. Access must be carefully controlled.
+
+### Policy 3: Authenticated Read Access
+
+**Policy Name:** `Authenticated read evaluaciones`
+
+**Purpose:** Allow authenticated users (docentes, estudiantes, admins) to view evaluation records relevant to their role.
+
+**SQL Definition:**
+
+```sql
+CREATE POLICY "Authenticated read evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO authenticated 
+USING (true);
+```
+
+**Explanation:**
+- **Operation:** `SELECT` only
+- **Who:** All authenticated users
+- **Access:** Full read access to evaluation records
+- **Rationale:**
+  - **Docentes** need to see their submitted evaluations
+  - **Estudiantes** need to view their project feedback
+  - **Admins** need oversight of the evaluation process
+
+**Usage in Code:**
+
+From `docenteDashboardView.js:156-171`:
+```javascript
+// Docente viewing their submitted evaluations
+const { data: assignments, error } = await supabaseClient
+    .from('proyecto_evaluadores')
+    .select(`
+        proyecto_id,
+        proyectos (
+            id, nombre, categoria, semestre, anio, estado,
+            evaluaciones (evaluador_id, puntaje_final)
+        )
+    `)
+    .eq('evaluador_id', currentProfile.id);
+```
+
+From `estudianteDashboardView.js:32-45`:
+```javascript
+// Student viewing evaluations of their projects
+const { data: assignments, error: aErr } = await supabaseClient
+    .from('proyecto_estudiantes')
+    .select(`
+        proyecto_id,
+        proyectos (
+            id, nombre, categoria, semestre, anio, estado,
+            evaluaciones (
+                puntaje_final,
+                observaciones,
+                perfiles (nombre)
+            )
+        )
+    `)
+    .eq('estudiante_id', currentProfile.id);
+```
+
+---
+
+### Policy 4: Public Read for Evaluated Projects
+
+**Policy Name:** `Public read evaluated evaluaciones`
+
+**Purpose:** Allow unauthenticated users to view evaluation scores **only** for projects with `estado = 'Evaluado'`. Enables public ranking functionality.
+
+**SQL Definition:**
+
+```sql
+CREATE POLICY "Public read evaluated evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyectos p
+        WHERE p.id = evaluaciones.proyecto_id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+
+**Explanation:**
+- **Operation:** `SELECT` only
+- **Who:** Unauthenticated users (`anon`)
+- **Access:** Can only read evaluations for projects marked as `'Evaluado'`
+- **Privacy Protection:** In-progress evaluations and feedback remain hidden until all evaluators complete their work
+
+**Usage in Code:**
+
+From `resultsView.js:79-100`:
+```javascript
+// Public ranking calculation using evaluation scores
+const { data: proyectos, error: pErr } = await supabaseClient
+    .from('proyectos')
+    .select(`
+        id, nombre, categoria, semestre, anio, estado,
+        evaluaciones ( puntaje_final ),  // Only visible for estado='Evaluado'
+        proyecto_estudiantes (
+            perfiles ( nombre )
+        )
+    `)
+    .eq('estado', 'Evaluado');
+
+// Calculate average scores from visible evaluations
+let rankedProjects = proyectos.map(p => {
+    let avgScore = 0;
+    if (p.evaluaciones && p.evaluaciones.length > 0) {
+        const totalScore = p.evaluaciones.reduce((acc, curr) => 
+            acc + parseFloat(curr.puntaje_final || 0), 0
+        );
+        avgScore = parseFloat((totalScore / p.evaluaciones.length).toFixed(1));
+    }
+    return { nombre: p.nombre, score: avgScore };
+});
+```
+
+<Warning>
+  **Evaluation Confidentiality:** Evaluation details (scores, feedback) for `Pendiente` projects are **not accessible** to public users, ensuring evaluator independence and fairness.
+</Warning>
+
+---
+
+### Security Implications
+
+<Card title="Evaluator Independence" icon="user-secret">
+  Evaluations remain hidden until all assigned evaluators submit their scores, preventing bias and maintaining independence of evaluation.
+</Card>
+
+<Card title="Feedback Privacy" icon="comment-slash">
+  Individual evaluator feedback (`observaciones`) is visible to authenticated students but not to the public, maintaining appropriate privacy boundaries.
+</Card>
+
+## proyectos Table Policies
+
+<Info>
+  The source SQL file (`rls_security_hardening.sql`) does not explicitly define policies for the `proyectos` table. This suggests either:
+  1. Default public read access is allowed
+  2. Policies are defined elsewhere in the Supabase configuration
+  3. Access is controlled through related table policies
+
+  **Recommendation:** Implement explicit RLS policies for the `proyectos` table.
+</Info>
+
+### Recommended Policy: Public Read for Evaluated Projects
+
+```sql
+-- Allow public users to view only evaluated projects
+CREATE POLICY "Public read evaluated projects" ON public.proyectos
+FOR SELECT
+TO anon
+USING (estado = 'Evaluado');
+
+-- Allow authenticated users to view all projects
+CREATE POLICY "Authenticated read all projects" ON public.proyectos
+FOR SELECT
+TO authenticated
+USING (true);
+```
+
+## Junction Table Policies
+
+The junction tables (`proyecto_evaluadores` and `proyecto_estudiantes`) should also implement RLS policies.
+
+### Recommended Policies
+
+```sql
+-- proyecto_evaluadores: Only authenticated users can see assignments
+CREATE POLICY "Authenticated read proyecto_evaluadores" 
+ON public.proyecto_evaluadores
+FOR SELECT
+TO authenticated
+USING (true);
+
+-- proyecto_estudiantes: Public can see students of evaluated projects
+CREATE POLICY "Public read evaluated proyecto_estudiantes" 
+ON public.proyecto_estudiantes
+FOR SELECT
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyectos p
+        WHERE p.id = proyecto_estudiantes.proyecto_id
+        AND p.estado = 'Evaluado'
+    )
+);
+
+-- proyecto_estudiantes: Authenticated users can see all assignments
+CREATE POLICY "Authenticated read proyecto_estudiantes" 
+ON public.proyecto_estudiantes
+FOR SELECT
+TO authenticated
+USING (true);
+```
+
+## Write Operation Policies
+
+<Warning>
+  The provided SQL file only includes `SELECT` policies. **Write operations** (INSERT, UPDATE, DELETE) should be restricted and controlled through Supabase Edge Functions or admin operations.
+</Warning>
+
+### Recommended Write Policies
+
+```sql
+-- Only allow authenticated users to insert evaluations
+-- Further restrict to assigned evaluators via application logic
+CREATE POLICY "Authenticated insert evaluaciones" 
+ON public.evaluaciones
+FOR INSERT
+TO authenticated
+WITH CHECK (
+    evaluador_id = auth.uid()  -- Can only insert as themselves
+);
+
+-- Prevent updates to submitted evaluations
+CREATE POLICY "Prevent evaluation updates" 
+ON public.evaluaciones
+FOR UPDATE
+TO authenticated
+USING (false);  -- No one can update evaluations once submitted
+
+-- Only admins can delete records (implement via service role)
+-- No DELETE policy = deny all deletes via client
+```
+
+## Testing Security Policies
+
+### Test 1: Public Access to Pending Projects
+
+```javascript
+// Should return EMPTY results for unauthenticated users
+const { data, error } = await supabaseClient
+    .from('proyectos')
+    .select(`
+        *,
+        proyecto_estudiantes (
+            perfiles ( nombre )
+        )
+    `)
+    .eq('estado', 'Pendiente');
+
+// Expected: data = [] or only projects without RLS restrictions
+```
+
+### Test 2: Authenticated Access to All Projects
+
+```javascript
+// Should return ALL projects for logged-in users
+const { data: { session } } = await supabaseClient.auth.getSession();
+if (session) {
+    const { data, error } = await supabaseClient
+        .from('proyectos')
+        .select('*');
+    
+    // Expected: data contains projects in all states
+}
+```
+
+### Test 3: Public Access to Evaluated Projects
+
+```javascript
+// Should return only evaluated projects for unauthenticated users
+const { data, error } = await supabaseClient
+    .from('proyectos')
+    .select(`
+        *,
+        evaluaciones ( puntaje_final ),
+        proyecto_estudiantes (
+            perfiles ( nombre )
+        )
+    `)
+    .eq('estado', 'Evaluado');
+
+// Expected: data contains evaluated projects with visible student names
+```
+
+### Test 4: Evaluator Cannot See Other Evaluators' Details
+
+```javascript
+// Logged in as Evaluator A
+const { data, error } = await supabaseClient
+    .from('evaluaciones')
+    .select('*')
+    .eq('evaluador_id', 'evaluator-b-uuid');
+
+// Expected: Returns evaluations, but application logic should filter
+// Recommendation: Add RLS policy to restrict to own evaluations
+```
+
+## Best Practices
+
+<Card title="Enable RLS on All Tables" icon="lock">
+  Always enable RLS on all tables containing sensitive data. A table without RLS is accessible to anyone with the anon key.
+  
+  ```sql
+  ALTER TABLE proyectos ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE evaluaciones ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE perfiles ENABLE ROW LEVEL SECURITY;
+  ```
+</Card>
+
+<Card title="Test Policies with Different Roles" icon="vial">
+  Test RLS policies by switching between authenticated and anonymous contexts:
+  
+  ```javascript
+  // Test as anonymous
+  await supabaseClient.auth.signOut();
+  // Run queries...
+  
+  // Test as authenticated user
+  await supabaseClient.auth.signInWithPassword({...});
+  // Run queries...
+  ```
+</Card>
+
+<Card title="Use Service Role for Admin Operations" icon="key">
+  For admin operations (user creation, project deletion), use the **service role key** which bypasses RLS. Never expose the service role key to clients.
+  
+  From `adminDashboardView.js:372-379`:
+  ```javascript
+  const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/admin_manage_users`,
+      {
+          headers: {
+              'Authorization': `Bearer ${token}`,  // User token, not service role
+              'apikey': SUPABASE_ANON_KEY
+          }
+      }
+  );
+  ```
+</Card>
+
+<Card title="Audit Policy Changes" icon="clipboard-list">
+  Document all RLS policy changes and test thoroughly before deploying to production. Use version control for SQL migration files.
+</Card>
+
+<Card title="Minimize Public Data Exposure" icon="eye-slash">
+  Only expose the minimum data necessary for public features. Always default to restrictive policies and open up access as needed.
+</Card>
+
+## Common Pitfalls
+
+<Warning>
+  **Pitfall 1: Missing RLS Policies**
+  
+  If a table has RLS enabled but no policies defined, **all access is denied by default**. Ensure you create appropriate SELECT policies for authenticated users.
+</Warning>
+
+<Warning>
+  **Pitfall 2: Overly Permissive Policies**
+  
+  Using `USING (true)` for all policies provides no real security. Always add conditions based on authentication status, user roles, or data relationships.
+</Warning>
+
+<Warning>
+  **Pitfall 3: Client-Side Role Checks**
+  
+  Never rely solely on checking `currentProfile.rol` in JavaScript. Roles can be manipulated in the browser. Always enforce role-based access through RLS policies or Edge Functions.
+</Warning>
+
+<Warning>
+  **Pitfall 4: Exposing Service Role Key**
+  
+  The service role key bypasses ALL RLS policies. Never include it in client-side code or version control. Use it only in secure server environments.
+</Warning>
+
+## Policy Audit Checklist
+
+<Accordion title="Pre-Deployment Security Checklist">
+  Before deploying RLS changes, verify:
+
+  - [ ] RLS is enabled on all tables with sensitive data
+  - [ ] All tables have explicit SELECT policies for both `anon` and `authenticated` roles
+  - [ ] Write operations (INSERT, UPDATE, DELETE) are restricted to appropriate roles
+  - [ ] Public access is limited to `estado = 'Evaluado'` projects only
+  - [ ] Junction table policies align with main table policies
+  - [ ] Service role operations are isolated to Edge Functions
+  - [ ] Policies have been tested with different user roles
+  - [ ] Policy changes are documented and version controlled
+  - [ ] No direct access to `perfiles` table for role escalation
+  - [ ] Evaluation submissions verify evaluator assignment before allowing INSERT
+</Accordion>
+
+## Additional Resources
+
+- [Supabase RLS Documentation](https://supabase.com/docs/guides/auth/row-level-security)
+- [PostgreSQL Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [Supabase Auth Helpers](https://supabase.com/docs/guides/auth/auth-helpers)
+
+<Info>
+  For questions about implementing additional security policies or modifying existing ones, consult the Supabase documentation or contact your database administrator.
+</Info>

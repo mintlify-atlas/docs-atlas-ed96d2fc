@@ -1,0 +1,573 @@
+---
+title: 'Security Best Practices'
+description: 'Comprehensive security guide for RuedaPro UNIPAZ deployment'
+---
+
+## Overview
+
+Security is paramount for an academic platform handling student and faculty data. RuedaPro UNIPAZ implements multiple layers of security through Supabase Row Level Security (RLS), authentication controls, input sanitization, and role-based access control.
+
+## Security Architecture
+
+The platform's security model follows these principles:
+
+- **Defense in Depth**: Multiple security layers (client-side validation, RLS policies, authentication)
+- **Least Privilege**: Users only access data they need based on their role
+- **Public Transparency**: Evaluated project results are publicly visible for transparency
+- **Zero Trust**: All requests are authenticated and authorized, even from authenticated users
+
+## Row Level Security (RLS)
+
+Supabase RLS policies enforce data access rules at the database level, making it impossible to bypass security through API manipulation.
+
+### Understanding RLS Policies
+
+RLS policies are SQL-based rules that filter database queries. They run on every SELECT, INSERT, UPDATE, and DELETE operation.
+
+**Key Concepts**:
+
+- **authenticated**: Users who have logged in through Supabase Auth
+- **anon**: Unauthenticated public users (visitors)
+- **USING clause**: Determines which rows are visible/accessible
+- **WITH CHECK clause**: Validates rows before INSERT/UPDATE
+
+### Perfiles (User Profiles) Security
+
+The `perfiles` table stores user information and must be carefully protected.
+
+```sql
+-- Authenticated users can view all profiles
+-- (Required for teacher/student selection in forms)
+CREATE POLICY "Authenticated read perfiles" ON public.perfiles 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+-- Public users can only see student names from evaluated projects
+-- (Required for public ranking display)
+CREATE POLICY "Public read evaluated estudiantes" ON public.perfiles 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyecto_estudiantes pe
+        JOIN public.proyectos p ON p.id = pe.proyecto_id
+        WHERE pe.estudiante_id = perfiles.id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+
+**What this protects**:
+- Public users cannot see profiles of students without evaluated projects
+- Public users cannot see teacher profiles
+- Public users cannot see admin profiles
+- Personal information remains private until projects are evaluated
+
+<Warning>
+  Users can view all profiles once authenticated. Ensure sensitive personal data (phone numbers, addresses) are NOT stored in the perfiles table.
+</Warning>
+
+### Evaluaciones (Evaluations) Security
+
+Evaluation scores are sensitive during the evaluation period but become public after completion.
+
+```sql
+-- Authenticated users can view all evaluations
+-- (Teachers need to see evaluations to avoid duplicate submissions)
+CREATE POLICY "Authenticated read evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+-- Public users can only view evaluations of evaluated projects
+-- (Required for public results page)
+CREATE POLICY "Public read evaluated evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyectos p
+        WHERE p.id = evaluaciones.proyecto_id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+
+**What this protects**:
+- Prevents public access to scores while projects are being evaluated
+- Allows transparency after evaluation completion
+- Prevents score manipulation by limiting who can see partial results
+
+### Complete RLS Policy Script
+
+The full security hardening script is located at `sql/rls_security_hardening.sql`:
+
+<CodeGroup>
+```sql sql/rls_security_hardening.sql
+-- ==========================================
+-- RUEDAPRO UNIPAZ: SECURITY HARDENING
+-- RUN THIS SCRIPT IN YOUR SUPABASE SQL EDITOR
+-- ==========================================
+
+-- 1. Restricciones en tabla 'perfiles'
+DROP POLICY IF EXISTS "Public read perfiles" ON public.perfiles;
+
+-- Los usuarios logueados pueden ver los perfiles (necesario para selects y asignaciones)
+CREATE POLICY "Authenticated read perfiles" ON public.perfiles 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+-- Los usuarios no logueados (público general) solo pueden leer los nombres de los estudiantes 
+-- de proyectos ganadores (en estado 'Evaluado') para que funcione el Ranking Público.
+CREATE POLICY "Public read evaluated estudiantes" ON public.perfiles 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyecto_estudiantes pe
+        JOIN public.proyectos p ON p.id = pe.proyecto_id
+        WHERE pe.estudiante_id = perfiles.id
+        AND p.estado = 'Evaluado'
+    )
+);
+
+-- 2. Restricciones en tabla 'evaluaciones'
+DROP POLICY IF EXISTS "Public read evaluaciones" ON public.evaluaciones;
+
+-- Los docentes, estudiantes y administradores pueden leer evaluaciones
+CREATE POLICY "Authenticated read evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+-- Los usuarios públicos (anon) solo pueden consultar evaluaciones de proyectos 'Evaluados'
+-- (Para permitir que el tablero de resultados públicos obtenga el puntaje final).
+CREATE POLICY "Public read evaluated evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyectos p
+        WHERE p.id = evaluaciones.proyecto_id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+</CodeGroup>
+
+<Note>
+  Always test RLS policies thoroughly before deploying to production. Use Supabase's policy testing tools or create test users with different roles.
+</Note>
+
+## Role-Based Access Control (RBAC)
+
+RuedaPro UNIPAZ implements three user roles, each with specific permissions:
+
+### Admin Role
+
+**Capabilities**:
+- Create and manage all users (docentes and estudiantes)
+- Create and manage all projects
+- Assign docentes to evaluate projects
+- Assign estudiantes to projects
+- View all evaluations
+- Change project status to "Evaluado"
+
+**Access Control**:
+```javascript
+// Role is stored in user_metadata during user creation
+const userMeta = currentUser.user_metadata || {};
+const userRole = userMeta.rol || 'estudiante';
+
+if (userRole !== 'admin') {
+    // Redirect or show error
+}
+```
+
+### Docente (Teacher) Role
+
+**Capabilities**:
+- View projects assigned to them for evaluation
+- Submit evaluations for assigned projects
+- View their own evaluation history
+- Cannot create users or projects
+- Cannot view other teachers' evaluations (unless admin)
+
+**Access Control**:
+```javascript
+// Only show projects where this teacher is an evaluator
+const { data: assignedProjects } = await supabaseClient
+    .from('proyecto_evaluadores')
+    .select('proyecto_id')
+    .eq('evaluador_id', currentProfile.id);
+```
+
+### Estudiante (Student) Role
+
+**Capabilities**:
+- View projects they are associated with
+- View evaluation results for their projects (when available)
+- Cannot create, edit, or delete anything
+- Cannot view other students' projects (unless public)
+
+**Access Control**:
+```javascript
+// Only show projects this student is part of
+const { data: myProjects } = await supabaseClient
+    .from('proyecto_estudiantes')
+    .select('proyecto_id')
+    .eq('estudiante_id', currentProfile.id);
+```
+
+## Authentication Security
+
+### User Metadata
+
+Critical user information is stored in JWT user_metadata:
+
+```json
+{
+  "nombre": "Juan Pérez",
+  "rol": "docente"
+}
+```
+
+<Warning>
+  User metadata is included in the JWT token and visible to the client. **Never store sensitive information** like social security numbers, phone numbers, or addresses in user_metadata.
+</Warning>
+
+**Best Practices**:
+- Store only essential identification data (name, role)
+- Store sensitive data in the `perfiles` table with proper RLS
+- Validate role on every privileged operation
+- Never trust client-side role checks alone
+
+### Session Management
+
+The application restores user sessions on page load:
+
+```javascript
+async function restoreSession() {
+    if(!supabaseClient) return;
+    try {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        
+        if (session && session.user) {
+            currentUser = session.user;
+            const userMeta = currentUser.user_metadata || {};
+            currentProfile = {
+                id: currentUser.id,
+                nombre: userMeta.nombre || currentUser.email,
+                rol: userMeta.rol || 'estudiante'
+            };
+        }
+    } catch (e) {
+        console.error("Session restore err:", e);
+    }
+}
+```
+
+**Security Features**:
+- Sessions are stored in browser localStorage by Supabase
+- JWT tokens have expiration times
+- Tokens are automatically refreshed by Supabase client
+- Manual logout clears all session data
+
+### Password Security
+
+Supabase handles password security:
+
+- Passwords are hashed using bcrypt
+- Minimum password requirements can be configured in Supabase dashboard
+- Password reset flows use secure email tokens
+- Failed login attempts can be rate-limited
+
+**Recommended Settings** (in Supabase Auth settings):
+- Minimum password length: 10 characters
+- Require uppercase, lowercase, and numbers
+- Enable rate limiting on auth endpoints
+- Set JWT expiration to 1 hour with auto-refresh
+
+## XSS Prevention
+
+RuedaPro UNIPAZ includes a helper function to prevent Cross-Site Scripting attacks:
+
+```javascript
+function escapeHTML(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+```
+
+### When to Use escapeHTML
+
+**Always escape user-provided content**:
+
+```javascript
+// ✅ CORRECT: Escape user input
+const projectName = escapeHTML(project.nombre);
+document.getElementById('project-title').innerHTML = projectName;
+
+// ❌ WRONG: Direct insertion of user input
+document.getElementById('project-title').innerHTML = project.nombre;
+```
+
+**Examples from the codebase**:
+
+```javascript
+// Displaying user names
+const userName = escapeHTML(currentProfile.nombre);
+
+// Displaying project descriptions
+const description = escapeHTML(project.descripcion);
+
+// Displaying evaluation comments
+const comments = escapeHTML(evaluation.comentarios);
+```
+
+<Warning>
+  Even though Supabase validates data at the database level, **always sanitize user input** before rendering in the DOM. XSS attacks can occur through crafted project names, descriptions, or comments.
+</Warning>
+
+### Content Security Policy (CSP)
+
+Add a CSP header to your web server configuration:
+
+```nginx
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; connect-src 'self' https://*.supabase.co; img-src 'self' data: https:;";
+```
+
+This restricts what external resources can be loaded and executed.
+
+## Credential Management
+
+### API Keys
+
+**Supabase Anon Key** (`config.js`):
+- Safe to expose in client-side code
+- Protected by RLS policies
+- Has limited permissions
+
+**Supabase Service Role Key**:
+- **NEVER expose in client-side code**
+- Only use in server-side Edge Functions
+- Has full database access, bypasses RLS
+
+<Warning>
+  If you accidentally commit your service_role key to Git, immediately:
+  1. Rotate the key in Supabase Project Settings > API
+  2. Update any server-side code using the key
+  3. Remove the key from Git history using `git filter-branch` or BFG Repo-Cleaner
+</Warning>
+
+### Environment Variables
+
+For production, use environment variables instead of hardcoded keys:
+
+```javascript
+// Development: Use direct values
+const SUPABASE_URL = 'https://your-project.supabase.co';
+const SUPABASE_ANON_KEY = 'your-anon-key';
+
+// Production: Use environment variables
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+```
+
+Set these in your hosting platform:
+
+- **Netlify**: Site Settings > Environment Variables
+- **Vercel**: Project Settings > Environment Variables
+- **Custom Server**: `.env` file (never commit this)
+
+## Database Security Hardening
+
+Beyond RLS policies, implement these database security measures:
+
+### Enable RLS on All Tables
+
+```sql
+ALTER TABLE public.perfiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proyectos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.evaluaciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proyecto_estudiantes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proyecto_evaluadores ENABLE ROW LEVEL SECURITY;
+```
+
+<Warning>
+  A table without RLS enabled is accessible to anyone with the API key, even with policies defined. Always enable RLS.
+</Warning>
+
+### Restrict Table Permissions
+
+By default, Supabase grants broad permissions. Restrict them:
+
+```sql
+-- Remove public INSERT/UPDATE/DELETE on sensitive tables
+REVOKE INSERT, UPDATE, DELETE ON public.perfiles FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON public.perfiles FROM authenticated;
+
+-- Only specific roles should modify user profiles
+GRANT INSERT, UPDATE ON public.perfiles TO service_role;
+```
+
+### Add Database Constraints
+
+Enforce data integrity at the database level:
+
+```sql
+-- Ensure valid roles
+ALTER TABLE public.perfiles 
+ADD CONSTRAINT valid_rol 
+CHECK (rol IN ('admin', 'docente', 'estudiante'));
+
+-- Ensure valid project states
+ALTER TABLE public.proyectos 
+ADD CONSTRAINT valid_estado 
+CHECK (estado IN ('Pendiente', 'En Evaluación', 'Evaluado'));
+
+-- Ensure evaluation scores are valid
+ALTER TABLE public.evaluaciones
+ADD CONSTRAINT valid_scores
+CHECK (
+    puntaje_presentacion BETWEEN 0 AND 100 AND
+    puntaje_innovacion BETWEEN 0 AND 100 AND
+    puntaje_tecnico BETWEEN 0 AND 100 AND
+    puntaje_impacto BETWEEN 0 AND 100
+);
+```
+
+### Audit Logging
+
+Enable audit logging in Supabase:
+
+1. Go to **Project Settings** > **Database**
+2. Enable **Log Connections**
+3. Enable **Log Statements**
+4. Review logs regularly in **Logs** section
+
+Logs help detect:
+- Unauthorized access attempts
+- Unusual query patterns
+- RLS policy violations
+- Performance issues
+
+## Security Checklist
+
+Before deploying to production:
+
+<Steps>
+  <Step title="Authentication">
+    - [ ] Service role key is NOT in client-side code
+    - [ ] Anon key is properly configured in `config.js`
+    - [ ] Public signups are disabled
+    - [ ] Email confirmation is enabled
+    - [ ] Password requirements are set (min 10 chars)
+    - [ ] JWT expiration is configured (1 hour recommended)
+  </Step>
+
+  <Step title="Row Level Security">
+    - [ ] RLS is enabled on ALL tables
+    - [ ] `rls_security_hardening.sql` script has been run
+    - [ ] Policies have been tested with different user roles
+    - [ ] Public access is limited to evaluated projects only
+    - [ ] Authenticated users can only access their assigned data
+  </Step>
+
+  <Step title="Input Validation">
+    - [ ] `escapeHTML()` is used on all user-provided content
+    - [ ] Form inputs have client-side validation
+    - [ ] Database constraints are in place
+    - [ ] File uploads (if any) are validated and sanitized
+  </Step>
+
+  <Step title="Credentials">
+    - [ ] API keys are stored in environment variables
+    - [ ] No sensitive keys are committed to Git
+    - [ ] `.env` file is in `.gitignore`
+    - [ ] HTTPS is enforced on production domain
+  </Step>
+
+  <Step title="Monitoring">
+    - [ ] Audit logging is enabled in Supabase
+    - [ ] Error tracking is configured
+    - [ ] Alerts are set up for suspicious activity
+    - [ ] Regular security audits are scheduled
+  </Step>
+</Steps>
+
+## Incident Response
+
+If you suspect a security breach:
+
+### Immediate Actions
+
+1. **Rotate all API keys**:
+   - Go to Supabase Project Settings > API
+   - Click **Refresh** next to anon and service_role keys
+   - Update all deployed applications with new keys
+
+2. **Review audit logs**:
+   - Check Supabase Logs for unusual activity
+   - Look for unauthorized access patterns
+   - Identify affected user accounts
+
+3. **Reset compromised accounts**:
+   - Force password reset for affected users
+   - Review and revoke active sessions
+   - Check for unauthorized data modifications
+
+### Post-Incident
+
+1. **Analyze the breach**:
+   - Determine how the breach occurred
+   - Identify which data was accessed
+   - Document the timeline of events
+
+2. **Patch vulnerabilities**:
+   - Fix the security hole that was exploited
+   - Update RLS policies if needed
+   - Add additional validation
+
+3. **Notify affected parties**:
+   - Inform users if their data was compromised
+   - Report to university administration
+   - Document lessons learned
+
+## Additional Resources
+
+<CardGroup cols={2}>
+  <Card title="OWASP Top 10" icon="shield-halved" href="https://owasp.org/www-project-top-ten/">
+    Learn about the most critical web security risks
+  </Card>
+  <Card title="Supabase Security" icon="database" href="https://supabase.com/docs/guides/auth/row-level-security">
+    Official Supabase RLS documentation
+  </Card>
+  <Card title="Web Security MDN" icon="book" href="https://developer.mozilla.org/en-US/docs/Web/Security">
+    Comprehensive web security guide
+  </Card>
+  <Card title="JWT Best Practices" icon="key" href="https://tools.ietf.org/html/rfc8725">
+    JSON Web Token security considerations
+  </Card>
+</CardGroup>
+
+## Security Audit Schedule
+
+Maintain security through regular audits:
+
+- **Weekly**: Review Supabase audit logs
+- **Monthly**: Check for outdated dependencies
+- **Quarterly**: Full security assessment
+- **Annually**: External security audit (if budget allows)
+
+<Note>
+  Security is an ongoing process, not a one-time setup. Stay informed about new vulnerabilities and keep your dependencies updated.
+</Note>

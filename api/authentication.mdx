@@ -1,0 +1,626 @@
+---
+title: 'Authentication API'
+description: 'Complete reference for authentication functions in RuedaPro UNIPAZ'
+---
+
+## Overview
+
+The authentication system in RuedaPro UNIPAZ handles user login, logout, session management, and role-based access control. All authentication functions are located in `js/auth.js` and use Supabase Auth as the backend service.
+
+## Global State
+
+The authentication system maintains two global variables that represent the current user state:
+
+### currentUser
+
+```javascript
+let currentUser = null;
+```
+
+The `currentUser` variable holds the Supabase authentication user object returned from `supabaseClient.auth.getSession()` or `signInWithPassword()`.
+
+**Type:** `User | null`
+
+**Properties:**
+- `id` (string) - User UUID
+- `email` (string) - User email address
+- `user_metadata` (object) - Custom metadata including `nombre` and `rol`
+- `created_at` (string) - Account creation timestamp
+- Additional Supabase auth properties
+
+### currentProfile
+
+```javascript
+let currentProfile = null;
+```
+
+The `currentProfile` variable holds application-specific user profile information extracted from the authentication user.
+
+**Type:** `Profile | null`
+
+**Structure:**
+```typescript
+interface Profile {
+    id: string;          // User UUID (matches currentUser.id)
+    nombre: string;      // User's full name
+    rol: string;         // Role: 'estudiante' | 'docente' | 'admin'
+    avatar_url?: string; // Optional avatar URL from database
+}
+```
+
+## Core Functions
+
+### handleLogin()
+
+Authenticates a user with email and password for a specific role.
+
+<ParamField path="event" type="Event" required>
+  The form submit event object (used to prevent default form submission)
+</ParamField>
+
+<ParamField path="role" type="string" required>
+  The role being authenticated. Must be one of: `'estudiante'`, `'docente'`, or `'admin'`
+</ParamField>
+
+#### Function Signature
+
+```javascript
+async function handleLogin(event, role)
+```
+
+#### Behavior
+
+1. Prevents default form submission
+2. Validates Supabase client is initialized
+3. Extracts email and password from form inputs
+4. Disables submit button and shows loading state
+5. Calls `supabaseClient.auth.signInWithPassword()`
+6. Extracts user metadata (role, nombre) from JWT
+7. Verifies the user's role matches the requested role
+8. Sets `currentUser` and `currentProfile` global variables
+9. Fetches avatar URL if user is a docente
+10. Navigates to role-specific dashboard on success
+11. Shows error message if authentication fails or role mismatch
+
+#### Example Usage
+
+```javascript
+// In HTML form
+<form onsubmit="handleLogin(event, 'docente')">
+    <input id="login-email" type="email" required>
+    <input id="login-password" type="password" required>
+    <button type="submit">Ingresar</button>
+</form>
+
+<div id="login-error" style="display: none;"></div>
+```
+
+#### Success Flow
+
+```javascript
+// 1. Authenticate with Supabase
+const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+    email: email,
+    password: password
+});
+
+// 2. Set current user
+currentUser = authData.user;
+
+// 3. Build profile from user_metadata
+const userMeta = currentUser.user_metadata || {};
+currentProfile = {
+    id: currentUser.id,
+    nombre: userMeta.nombre || currentUser.email,
+    rol: userMeta.rol || 'estudiante'
+};
+
+// 4. Verify role matches
+if (role === 'docente' && currentProfile.rol === 'docente') {
+    // Fetch avatar for docentes
+    const { data: pData } = await supabaseClient
+        .from('perfiles')
+        .select('avatar_url')
+        .eq('id', currentProfile.id)
+        .single();
+    
+    if (pData && pData.avatar_url) {
+        currentProfile.avatar_url = pData.avatar_url;
+    }
+    
+    updateGlobalHeader();
+    navigateTo('dashboard-docente');
+}
+```
+
+#### Error Handling
+
+**Authentication Error:**
+```javascript
+if (authError) {
+    errorDiv.textContent = 'Autenticación fallida: Credenciales incorrectas o cuentas inexistentes.';
+    errorDiv.style.display = 'block';
+    return;
+}
+```
+
+**Role Mismatch:**
+```javascript
+if (role !== currentProfile.rol) {
+    errorDiv.textContent = `No tienes permiso de "${role}". Tu rol asignado es: "${currentProfile.rol}".`;
+    errorDiv.style.display = 'block';
+    await supabaseClient.auth.signOut();
+    currentUser = null;
+    currentProfile = null;
+}
+```
+
+#### Required DOM Elements
+
+- `#login-email` - Email input field
+- `#login-password` - Password input field
+- `#login-error` - Error message container
+- Submit button within the form
+
+---
+
+### handleLogout()
+
+Signs out the current user and clears authentication state.
+
+#### Function Signature
+
+```javascript
+async function handleLogout()
+```
+
+#### Behavior
+
+1. Calls `supabaseClient.auth.signOut()` to end Supabase session
+2. Clears `currentUser` (sets to `null`)
+3. Clears `currentProfile` (sets to `null`)
+4. Updates global header to show login buttons
+5. Navigates to home page
+
+#### Example Usage
+
+```javascript
+// In HTML
+<a href="#" onclick="handleLogout(); return false;">
+    Cerrar Sesión
+</a>
+
+// Or in JavaScript
+document.getElementById('logout-btn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    await handleLogout();
+});
+```
+
+#### Implementation
+
+```javascript
+async function handleLogout() {
+    if(supabaseClient) {
+        await supabaseClient.auth.signOut();
+    }
+    currentUser = null;
+    currentProfile = null;
+    updateGlobalHeader();
+    navigateTo('home');
+}
+```
+
+---
+
+### restoreSession()
+
+Restores user session from Supabase on page load or refresh.
+
+#### Function Signature
+
+```javascript
+async function restoreSession()
+```
+
+#### Behavior
+
+1. Checks if Supabase client is initialized
+2. Calls `supabaseClient.auth.getSession()` to retrieve active session
+3. If session exists, extracts user data
+4. Builds `currentProfile` from `user_metadata`
+5. Attempts to fetch avatar URL from `perfiles` table
+6. Updates global header to reflect logged-in state
+
+#### Example Usage
+
+```javascript
+// Called automatically on page load in main.js
+document.addEventListener('DOMContentLoaded', () => {
+    initThemeToggle();
+    initRouter();
+    navigateTo('home');
+    
+    // Restore session asynchronously
+    restoreSession();
+});
+```
+
+#### Implementation
+
+```javascript
+async function restoreSession() {
+    if(!supabaseClient) return;
+    
+    try {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        
+        if (session && session.user) {
+            currentUser = session.user;
+            const userMeta = currentUser.user_metadata || {};
+            currentProfile = {
+                id: currentUser.id,
+                nombre: userMeta.nombre || currentUser.email,
+                rol: userMeta.rol || 'estudiante'
+            };
+            
+            // Try fetching avatar if relevant
+            const { data: pData } = await supabaseClient
+                .from('perfiles')
+                .select('avatar_url')
+                .eq('id', currentProfile.id)
+                .single();
+            
+            if (pData && pData.avatar_url) {
+                currentProfile.avatar_url = pData.avatar_url;
+            }
+        }
+    } catch (e) {
+        console.error("Session restore err:", e);
+    }
+    
+    updateGlobalHeader();
+}
+```
+
+#### Error Handling
+
+Errors during session restoration are logged but don't prevent the application from loading:
+
+```javascript
+catch (e) {
+    console.error("Session restore err:", e);
+}
+```
+
+---
+
+### updateGlobalHeader()
+
+Updates the application header to reflect current authentication state.
+
+**Note:** This function is defined in `js/router.js` but is closely tied to authentication state.
+
+#### Function Signature
+
+```javascript
+function updateGlobalHeader()
+```
+
+#### Behavior
+
+**When User is Logged In:**
+1. Hides authentication buttons (`#auth-buttons`)
+2. Shows user menu (`#user-menu`)
+3. Sets avatar initial to first character of user name
+4. Displays user name in header
+5. Displays role badge with appropriate styling
+6. Configures "Ir a mi Panel" button to navigate to role-specific dashboard
+7. Sets up dropdown toggle functionality
+
+**When User is Logged Out:**
+1. Shows authentication buttons (`#auth-buttons`)
+2. Hides user menu (`#user-menu`)
+
+#### Example Usage
+
+```javascript
+// Called automatically after authentication state changes
+await handleLogin(event, 'docente');
+updateGlobalHeader(); // Header now shows user info
+
+await handleLogout();
+updateGlobalHeader(); // Header now shows login buttons
+```
+
+#### Implementation Details
+
+```javascript
+function updateGlobalHeader() {
+    const authBtns = document.getElementById('auth-buttons');
+    const userMenu = document.getElementById('user-menu');
+    
+    if (currentUser && currentProfile) {
+        // Hide login buttons
+        if (authBtns) authBtns.style.display = 'none';
+        
+        if (userMenu) {
+            userMenu.style.display = 'flex';
+            
+            // Set avatar initial
+            const avatarInitial = document.getElementById('header-avatar-initial');
+            if (avatarInitial) {
+                avatarInitial.textContent = currentProfile.nombre.charAt(0);
+            }
+            
+            // Set user name
+            const nameEl = document.getElementById('header-user-name');
+            if (nameEl) nameEl.textContent = currentProfile.nombre;
+            
+            // Set role badge with color
+            const roleEl = document.getElementById('header-user-role');
+            if (roleEl) {
+                roleEl.textContent = currentProfile.rol.toUpperCase();
+                roleEl.className = 'badge';
+                if(currentProfile.rol === 'admin') {
+                    roleEl.classList.add('badge-danger');
+                } else if(currentProfile.rol === 'docente') {
+                    roleEl.classList.add('badge-info');
+                } else {
+                    roleEl.classList.add('badge-success'); // estudiante
+                }
+            }
+            
+            // Configure panel button
+            const panelBtn = document.getElementById('header-btn-panel');
+            if (panelBtn) {
+                panelBtn.onclick = (e) => {
+                    e.preventDefault();
+                    if(currentProfile.rol === 'docente') {
+                        navigateTo('dashboard-docente');
+                    } else if(currentProfile.rol === 'estudiante') {
+                        navigateTo('dashboard-estudiante');
+                    } else if(currentProfile.rol === 'admin') {
+                        navigateTo('dashboard-admin');
+                    }
+                    document.getElementById('user-dropdown').style.display = 'none';
+                };
+            }
+        }
+    } else {
+        // Show login buttons, hide user menu
+        if (authBtns) authBtns.style.display = 'flex';
+        if (userMenu) userMenu.style.display = 'none';
+    }
+}
+```
+
+#### Required DOM Elements
+
+- `#auth-buttons` - Container for login buttons
+- `#user-menu` - Container for user dropdown
+- `#header-avatar-initial` - Avatar initial display
+- `#header-user-name` - User name display
+- `#header-user-role` - Role badge display
+- `#header-btn-panel` - Dashboard navigation button
+- `#user-dropdown` - Dropdown menu container
+
+---
+
+## Role Verification
+
+### Role Types
+
+The system supports three role types:
+
+| Role | Description | Dashboard Route |
+|------|-------------|----------------|
+| `estudiante` | Students who view their project evaluations | `dashboard-estudiante` |
+| `docente` | Faculty members who evaluate projects | `dashboard-docente` |
+| `admin` | Administrators who manage users and assignments | `dashboard-admin` |
+
+### Role Source
+
+User roles are stored in the JWT `user_metadata` field and set during user creation. This approach:
+- Avoids database round-trips during login
+- Prevents RLS policy issues during authentication
+- Ensures roles are cryptographically signed by Supabase
+
+### Role Verification Pattern
+
+```javascript
+// Verify role before granting access
+if (role === 'docente' && currentProfile.rol === 'docente') {
+    // Grant access to docente dashboard
+    navigateTo('dashboard-docente');
+} else {
+    // Show error and sign out
+    errorDiv.textContent = `No tienes permiso de "${role}".`;
+    await supabaseClient.auth.signOut();
+}
+```
+
+### Protected Routes
+
+Routes are protected in the router by checking `currentProfile.rol`:
+
+```javascript
+case 'dashboard-docente':
+    if (currentProfile?.rol === 'docente') {
+        appContent.innerHTML = renderDocenteDashboard();
+    } else {
+        navigateTo('home'); // Redirect unauthorized users
+    }
+    break;
+```
+
+---
+
+## Session Management
+
+### Session Lifecycle
+
+```
+1. User logs in
+   ↓
+2. Supabase creates session (JWT stored in browser)
+   ↓
+3. Session persists across page refreshes
+   ↓
+4. restoreSession() called on page load
+   ↓
+5. User navigates app (session maintained)
+   ↓
+6. User logs out or session expires
+   ↓
+7. Session cleared from browser
+```
+
+### Session Storage
+
+Supabase automatically stores the session JWT in browser localStorage. The session includes:
+- Access token (JWT)
+- Refresh token
+- User metadata
+- Expiration timestamp
+
+### Session Expiry
+
+Sessions are automatically refreshed by the Supabase client. If a session expires:
+- The user is automatically logged out
+- `currentUser` and `currentProfile` become `null`
+- The user must log in again
+
+---
+
+## Security Considerations
+
+### Password Security
+
+- Passwords are transmitted over HTTPS only
+- Passwords are hashed by Supabase (never stored in plaintext)
+- Password complexity requirements enforced by Supabase
+
+### JWT Security
+
+- JWTs are signed by Supabase (tamper-proof)
+- JWTs contain user ID and metadata
+- JWTs expire after configurable period
+
+### XSS Protection
+
+User data is sanitized before rendering:
+
+```javascript
+// In view rendering
+htmlContent += `<h2>${escapeHTML(currentProfile.nombre)}</h2>`;
+```
+
+### Session Fixation Prevention
+
+- New session created on each login
+- Old sessions invalidated on logout
+
+---
+
+## Complete Example
+
+Here's a complete example of implementing authentication in a custom login view:
+
+```javascript
+// 1. Render the login form
+function renderCustomLoginView(role) {
+    return `
+        <div class="login-container">
+            <h2>Ingreso ${role}</h2>
+            <form onsubmit="handleLogin(event, '${role}')">
+                <div>
+                    <label>Correo Electrónico</label>
+                    <input 
+                        id="login-email" 
+                        type="email" 
+                        placeholder="usuario@unipaz.edu.co" 
+                        required
+                    >
+                </div>
+                
+                <div>
+                    <label>Contraseña</label>
+                    <input 
+                        id="login-password" 
+                        type="password" 
+                        required
+                    >
+                </div>
+                
+                <div 
+                    id="login-error" 
+                    style="color: red; display: none;"
+                ></div>
+                
+                <button type="submit">Ingresar</button>
+            </form>
+        </div>
+    `;
+}
+
+// 2. The handleLogin function (from auth.js) handles authentication
+
+// 3. On success, user is redirected to their dashboard
+// 4. On failure, error message is displayed in #login-error
+```
+
+---
+
+## Testing Authentication
+
+### Manual Testing
+
+1. **Test Valid Login:**
+   - Navigate to login page for a role
+   - Enter valid credentials
+   - Verify redirect to correct dashboard
+   - Verify header shows user info
+
+2. **Test Invalid Login:**
+   - Enter incorrect credentials
+   - Verify error message displays
+   - Verify user remains on login page
+
+3. **Test Role Mismatch:**
+   - Navigate to docente login
+   - Enter estudiante credentials
+   - Verify error message about role mismatch
+   - Verify user is logged out
+
+4. **Test Session Persistence:**
+   - Log in successfully
+   - Refresh the page
+   - Verify user remains logged in
+   - Verify correct dashboard displays
+
+5. **Test Logout:**
+   - Click logout button
+   - Verify redirect to home page
+   - Verify header shows login buttons
+   - Verify cannot access protected routes
+
+---
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="API Overview" icon="book" href="/api/overview">
+    Understanding the overall system architecture
+  </Card>
+  <Card title="Router API" icon="route" href="/api/js/router">
+    Client-side routing and navigation
+  </Card>
+  <Card title="Database Schema" icon="database" href="/api/schema/tables">
+    User tables and relationships
+  </Card>
+  <Card title="Security Guide" icon="shield" href="/deployment/security">
+    Security best practices and RLS policies
+  </Card>
+</CardGroup>

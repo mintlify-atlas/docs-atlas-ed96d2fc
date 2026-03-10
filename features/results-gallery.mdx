@@ -1,0 +1,498 @@
+---
+title: "Results Gallery"
+description: "Public display of historical rankings and project achievements"
+icon: "ranking-star"
+---
+
+## Overview
+
+The Results Gallery provides a public-facing view of evaluated projects, displaying historical rankings organized by semester, year, and category. This transparent system showcases the top-performing engineering projects from UNIPAZ's academic programs.
+
+## Public Results Display
+
+### What's Publicly Visible
+
+The Results Gallery displays:
+
+<CardGroup cols={2}>
+  <Card title="Top 5 Rankings" icon="trophy">
+    Best-performing projects per category and period
+  </Card>
+  <Card title="Project Names" icon="file-lines">
+    Full titles of evaluated projects
+  </Card>
+  <Card title="Team Members" icon="users">
+    Names of student authors
+  </Card>
+  <Card title="Final Scores" icon="star">
+    Average evaluation scores (1.0-5.0)
+  </Card>
+</CardGroup>
+
+### Data Privacy
+
+<Warning>
+  **What's NOT Displayed Publicly:**
+  
+  - Individual criterion scores
+  - Evaluator feedback and observations
+  - Incomplete/pending evaluations
+  - Projects with status other than "Evaluado"
+  - Evaluator names
+</Warning>
+
+Only projects with `estado = 'Evaluado'` appear in the public rankings, ensuring only completed assessments are visible.
+
+## Filtering System
+
+### Available Filters
+
+Users can filter results using three dimensions:
+
+<Tabs>
+  <Tab title="Year">
+    ```javascript resultsView.js:18-23
+    <select id="filter-year">
+        <option value="2026">2026</option>
+        <option value="2025">2025</option>
+        <option value="2024">2024</option>
+        <option value="2023">2023</option>
+    </select>
+    ```
+    
+    View results from different academic years (2023-2026 shown, expandable).
+  </Tab>
+  
+  <Tab title="Semester">
+    ```javascript resultsView.js:26-30
+    <select id="filter-semester">
+        <option value="1">1 (Primer Semestre)</option>
+        <option value="2">2 (Segundo Semestre)</option>
+    </select>
+    ```
+    
+    Choose between first or second semester results.
+  </Tab>
+  
+  <Tab title="Category">
+    ```javascript resultsView.js:33-38
+    <select id="filter-category">
+        <option value="Desarrollo">Desarrollo</option>
+        <option value="Propuesta">Propuesta</option>
+        <option value="Aplicación">Aplicación</option>
+    </select>
+    ```
+    
+    Filter by project category:
+    - **Desarrollo**: Software development projects
+    - **Propuesta**: Research proposals
+    - **Aplicación**: Applied technology projects
+  </Tab>
+</Tabs>
+
+### Filter Interaction
+
+```javascript resultsView.js:65-67
+const year = document.getElementById('filter-year')?.value || new Date().getFullYear().toString();
+const semester = document.getElementById('filter-semester')?.value || '1';
+const category = document.getElementById('filter-category')?.value || 'Desarrollo';
+```
+
+When users click the "Filtrar" button, the system:
+1. Reads all three filter values
+2. Queries the database for matching projects
+3. Calculates rankings
+4. Updates the display
+
+## Ranking Calculation
+
+### Query Logic
+
+The system loads evaluated projects with their scores:
+
+```javascript resultsView.js:79-92
+const { data: proyectos, error: pErr } = await supabaseClient
+    .from('proyectos')
+    .select(`
+        id, nombre, categoria, semestre, anio, estado,
+        evaluaciones ( puntaje_final ),
+        proyecto_estudiantes (
+            perfiles ( nombre )
+        )
+    `)
+    .eq('estado', 'Evaluado')
+    .eq('anio', year)
+    .eq('semestre', semester)
+    .eq('categoria', category);
+```
+
+### Score Averaging
+
+For projects with multiple evaluators, scores are averaged:
+
+```javascript resultsView.js:95-113
+let rankedProjects = proyectos.map(p => {
+    let avgScore = 0;
+    if (p.evaluaciones && p.evaluaciones.length > 0) {
+        const totalScore = p.evaluaciones.reduce((acc, curr) => acc + parseFloat(curr.puntaje_final || 0), 0);
+        avgScore = parseFloat((totalScore / p.evaluaciones.length).toFixed(1));
+    }
+    
+    let studentsText = 'Anónimo';
+    if (p.proyecto_estudiantes && p.proyecto_estudiantes.length > 0) {
+        studentsText = p.proyecto_estudiantes.map(pe => pe.perfiles?.nombre).join(', ');
+    }
+
+    return {
+        id: p.id,
+        nombre: escapeHTML(p.nombre),
+        students: escapeHTML(studentsText),
+        score: avgScore
+    };
+});
+```
+
+**Averaging Formula:**
+
+$$
+\text{Project Score} = \frac{\sum_{i=1}^{n} \text{Evaluator}_i\text{Score}}{n}
+$$
+
+Where $n$ is the number of evaluators who submitted evaluations.
+
+### Ranking Sort
+
+```javascript resultsView.js:115-116
+rankedProjects.sort((a, b) => b.score - a.score);
+const top5 = rankedProjects.slice(0, 5);
+```
+
+Projects are sorted by average score (descending) and limited to **Top 5** for display.
+
+## Display Components
+
+### Results Header
+
+```javascript resultsView.js:9-12
+<div style="text-align: center; margin-bottom: 3rem;">
+    <h1>Resultados Históricos</h1>
+    <p>Consulta el ranking de los mejores proyectos por año, semestre y categoría.</p>
+</div>
+```
+
+Provides context about the purpose of the page.
+
+### Ranking Table
+
+Results are displayed in a structured table:
+
+```javascript resultsView.js:131-145
+let tableRowsHtml = top5.map((p, index) => {
+    const rankClass = index === 0 ? 'rank-1' : (index === 1 ? 'rank-2' : (index === 2 ? 'rank-3' : ''));
+    return `
+        <tr>
+            <td>
+                <div class="rank-badge ${rankClass}">${index + 1}</div>
+            </td>
+            <td><strong>${p.nombre}</strong></td>
+            <td>${p.students}</td>
+            <td style="text-align: right; font-weight: 700; color: var(--primary-color); font-size: 1.2rem;">
+                ${p.score.toFixed(1)}
+            </td>
+        </tr>
+    `;
+}).join('');
+```
+
+**Table Columns:**
+
+| Column | Description | Format |
+|--------|-------------|--------|
+| Rank | Position (1-5) | Badge with special styling for top 3 |
+| Nombre del Proyecto | Project title | Bold text |
+| Integrantes | Student names | Comma-separated list |
+| Puntaje Final | Average score | 1 decimal place (e.g., 4.5) |
+
+### Rank Badges
+
+The top 3 positions receive special visual treatment:
+
+- **Rank 1**: `rank-1` class (typically gold/yellow styling)
+- **Rank 2**: `rank-2` class (typically silver/gray styling)
+- **Rank 3**: `rank-3` class (typically bronze/brown styling)
+- **Ranks 4-5**: Default badge styling
+
+## Empty States
+
+### No Results Found
+
+```javascript resultsView.js:120-128
+if (top5.length === 0) {
+    container.innerHTML = `
+        <div class="card">
+            <i class="fa-solid fa-ranking-star" style="font-size: 3rem; color: #cbd5e1;"></i>
+            <h3>No hay proyectos evaluados</h3>
+            <p>Aún no existen proyectos evaluados para <strong>${category}</strong> en el periodo <strong>${year}-${semester}</strong>.</p>
+        </div>
+    `;
+    return;
+}
+```
+
+When no projects match the filter criteria, a friendly empty state appears with:
+- Icon indicating no results
+- Clear message explaining why
+- The specific category and period searched
+
+### Loading State
+
+```javascript resultsView.js:71-77
+container.innerHTML = `
+    <div class="card">
+        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; color: var(--primary-color);"></i>
+        <p>Cargando ranking histórico...</p>
+    </div>
+`;
+```
+
+While data is loading, users see a spinning icon with a loading message.
+
+## Historical Gallery
+
+### Photo Gallery Component
+
+The `galeriaView.js` file provides a visual complement to the results:
+
+```javascript galeriaView.js:1-8
+function renderGaleriaView() {
+    return `
+        <div style="max-width: 1200px; margin: 3rem auto; padding: 0 1rem;">
+            <div style="text-align: center; margin-bottom: 3rem;">
+                <h1>Galería de Proyectos</h1>
+                <p>Recuerdos visuales de las ediciones pasadas de la Rueda de Proyectos.</p>
+            </div>
+    `;
+}
+```
+
+### Gallery Organization
+
+Photos are organized by academic period:
+
+<Tabs>
+  <Tab title="2026-1">
+    ```javascript galeriaView.js:11-33
+    <section>
+        <h2>Año 2026 / Semestre 1</h2>
+        <div class="gallery-grid">
+            <div class="gallery-item">
+                <i class="fa-solid fa-code"></i>
+                <div>Stand Innovación</div>
+            </div>
+            <div class="gallery-item">
+                <i class="fa-solid fa-microchip"></i>
+                <div>Prototipo IoT</div>
+            </div>
+            <!-- More items -->
+        </div>
+    </section>
+    ```
+    
+    Most recent semester with placeholder icons for:
+    - Innovation stands
+    - IoT prototypes  
+    - Winning teams
+    - Live evaluations
+  </Tab>
+  
+  <Tab title="2025-2">
+    ```javascript galeriaView.js:35-54
+    <section>
+        <h2>Año 2025 / Semestre 2</h2>
+        <div class="gallery-grid">
+            <div class="gallery-item">
+                <i class="fa-solid fa-robot"></i>
+                <div>Robótica Avanzada</div>
+            </div>
+            <!-- More items -->
+        </div>
+    </section>
+    ```
+    
+    Previous semester showing:
+    - Advanced robotics
+    - Mobile apps
+    - Award ceremonies
+  </Tab>
+  
+  <Tab title="2025-1">
+    Earlier period with data center and analytics projects
+  </Tab>
+</Tabs>
+
+<Note>
+  The gallery currently uses FontAwesome icons as placeholders. In production, these would be replaced with actual project photos uploaded during the event.
+</Note>
+
+## Public vs Authenticated Views
+
+### Access Levels
+
+<Tabs>
+  <Tab title="Public View">
+    **Anyone can see:**
+    - Top 5 rankings per category/period
+    - Project names
+    - Student names (for attribution)
+    - Final averaged scores
+    
+    **Cannot see:**
+    - Individual evaluator scores
+    - Evaluation observations
+    - Pending projects
+    - Admin controls
+  </Tab>
+  
+  <Tab title="Student View">
+    **Students can see:**
+    - All public information
+    - Their own project details
+    - Their project's full evaluation data (on their dashboard)
+    
+    **Cannot see:**
+    - Other students' detailed evaluations
+    - Evaluator identities
+  </Tab>
+  
+  <Tab title="Docente View">
+    **Docentes can see:**
+    - All public information
+    - Projects they're assigned to evaluate
+    - Their own submitted evaluations
+    
+    **Cannot see:**
+    - Other evaluators' scores before submission
+  </Tab>
+  
+  <Tab title="Admin View">
+    **Admins can see:**
+    - Everything
+    - Full evaluation details
+    - Evaluator assignments
+    - All project data regardless of status
+  </Tab>
+</Tabs>
+
+## Search and Discovery
+
+### Filter Combinations
+
+Users can combine filters to find specific results:
+
+<AccordionGroup>
+  <Accordion title="Example: Find Best Development Projects in 2025-1">
+    1. Set Year: 2025
+    2. Set Semester: 1
+    3. Set Category: Desarrollo
+    4. Click "Filtrar"
+    
+    Result: Top 5 software development projects from first semester 2025
+  </Accordion>
+  
+  <Accordion title="Example: View All Proposals from Current Year">
+    1. Set Year: 2026 (current)
+    2. Set Semester: 1 or 2 (current)
+    3. Set Category: Propuesta
+    4. Click "Filtrar"
+    
+    Result: Top 5 research proposals from current semester
+  </Accordion>
+  
+  <Accordion title="Example: Compare Across Semesters">
+    Users can manually switch between semesters to compare:
+    - Which semester had higher scores?
+    - How many projects were evaluated?
+    - Quality trends over time
+  </Accordion>
+</AccordionGroup>
+
+## Data Integrity
+
+### Score Precision
+
+```javascript resultsView.js:99
+avgScore = parseFloat((totalScore / p.evaluaciones.length).toFixed(1));
+```
+
+Scores are displayed with **1 decimal place precision** for consistency with the evaluation interface.
+
+### HTML Sanitization
+
+```javascript resultsView.js:109-110
+nombre: escapeHTML(p.nombre),
+students: escapeHTML(studentsText),
+```
+
+All user-generated content (project names, student names) is sanitized using the `escapeHTML()` function to prevent XSS attacks.
+
+### Error Handling
+
+```javascript resultsView.js:171-180
+catch (e) {
+    console.error("loadHistoricalRankings Error:", e);
+    if(container) {
+        container.innerHTML = `
+            <div class="card">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p>Ocurrió un error al cargar el ranking histórico.</p>
+            </div>
+        `;
+    }
+}
+```
+
+If database queries fail, users see a friendly error message while errors are logged for debugging.
+
+## Performance Considerations
+
+### Query Optimization
+
+The system uses Supabase's query expansion to reduce round trips:
+
+```javascript resultsView.js:79-92
+.select(`
+    id, nombre, categoria, semestre, anio, estado,
+    evaluaciones ( puntaje_final ),
+    proyecto_estudiantes (
+        perfiles ( nombre )
+    )
+`)
+```
+
+This single query fetches:
+- Project data
+- All related evaluations
+- Student profile information
+
+<Note>
+  By joining related tables in the query, we avoid the N+1 query problem and load all necessary data in one database round trip.
+</Note>
+
+### Automatic Updates
+
+The results page automatically refreshes when:
+- Users change filter selections
+- The page is loaded/reloaded
+
+No manual refresh needed - the system always shows current data from the database.
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Evaluation System" icon="clipboard-check" href="/features/evaluation-system">
+    Understand how scores are generated and averaged
+  </Card>
+  <Card title="Project Management" icon="folder-tree" href="/features/project-management">
+    Learn how projects are created and tracked through their lifecycle
+  </Card>
+</CardGroup>

@@ -1,0 +1,452 @@
+---
+title: 'Supabase Configuration'
+description: 'Set up Supabase backend for RuedaPro UNIPAZ'
+---
+
+## Overview
+
+RuedaPro UNIPAZ uses Supabase as its backend-as-a-service provider for authentication, database, and real-time features. This guide walks through setting up a new Supabase project from scratch.
+
+## Creating a Supabase Project
+
+<Steps>
+  <Step title="Create Supabase Account">
+    1. Visit [supabase.com](https://supabase.com)
+    2. Click **Start your project**
+    3. Sign up with GitHub, GitLab, or email
+    4. Confirm your email address
+  </Step>
+
+  <Step title="Create New Project">
+    1. From the Supabase dashboard, click **New project**
+    2. Select your organization (or create one)
+    3. Configure your project:
+       - **Name**: `ruedapro-unipaz`
+       - **Database Password**: Generate a strong password (save this securely)
+       - **Region**: Select closest to your users (e.g., `South America (São Paulo)`)
+       - **Pricing Plan**: Free tier is sufficient for small deployments
+    4. Click **Create new project**
+    5. Wait 2-3 minutes for project provisioning
+  </Step>
+
+  <Step title="Get API Credentials">
+    Once your project is ready:
+    
+    1. Go to **Project Settings** (gear icon in sidebar)
+    2. Navigate to **API** section
+    3. Copy the following credentials:
+       - **Project URL**: `https://your-project-id.supabase.co`
+       - **anon/public key**: A long JWT token
+    
+    <Warning>
+      Keep your API keys secure. The `anon` key is safe to use in client-side code, but never expose your `service_role` key publicly.
+    </Warning>
+    
+    4. Update `js/config.js` in your project:
+    
+    ```javascript js/config.js
+    const SUPABASE_URL = 'https://your-project-id.supabase.co';
+    const SUPABASE_ANON_KEY = 'your-anon-key-here';
+    ```
+  </Step>
+</Steps>
+
+## Database Schema Setup
+
+RuedaPro UNIPAZ requires five main tables. Execute these SQL commands in the Supabase SQL Editor.
+
+### Accessing SQL Editor
+
+1. In your Supabase project, click **SQL Editor** in the sidebar
+2. Click **New query**
+3. Paste and run each SQL block below
+
+### Table 1: perfiles (User Profiles)
+
+Stores user profile information for all users (admin, docente, estudiante).
+
+```sql
+CREATE TABLE public.perfiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    nombre TEXT NOT NULL,
+    rol TEXT NOT NULL CHECK (rol IN ('admin', 'docente', 'estudiante')),
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable Row Level Security
+ALTER TABLE public.perfiles ENABLE ROW LEVEL SECURITY;
+
+-- Create updated_at trigger
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_perfiles_updated_at
+    BEFORE UPDATE ON public.perfiles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+### Table 2: proyectos (Projects)
+
+Stores engineering project information.
+
+```sql
+CREATE TABLE public.proyectos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre TEXT NOT NULL,
+    descripcion TEXT,
+    categoria TEXT NOT NULL CHECK (categoria IN ('Desarrollo', 'Propuesta', 'Aplicación')),
+    semestre TEXT NOT NULL,
+    año INTEGER NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'En Evaluación', 'Evaluado')),
+    imagen_url TEXT,
+    video_url TEXT,
+    docente_id UUID REFERENCES public.perfiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.proyectos ENABLE ROW LEVEL SECURITY;
+
+CREATE TRIGGER update_proyectos_updated_at
+    BEFORE UPDATE ON public.proyectos
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+### Table 3: proyecto_estudiantes (Project-Student Association)
+
+Links students to projects (many-to-many relationship).
+
+```sql
+CREATE TABLE public.proyecto_estudiantes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proyecto_id UUID NOT NULL REFERENCES public.proyectos(id) ON DELETE CASCADE,
+    estudiante_id UUID NOT NULL REFERENCES public.perfiles(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(proyecto_id, estudiante_id)
+);
+
+ALTER TABLE public.proyecto_estudiantes ENABLE ROW LEVEL SECURITY;
+```
+
+### Table 4: proyecto_evaluadores (Project-Evaluator Association)
+
+Links docentes (evaluators) to projects they need to evaluate.
+
+```sql
+CREATE TABLE public.proyecto_evaluadores (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proyecto_id UUID NOT NULL REFERENCES public.proyectos(id) ON DELETE CASCADE,
+    evaluador_id UUID NOT NULL REFERENCES public.perfiles(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(proyecto_id, evaluador_id)
+);
+
+ALTER TABLE public.proyecto_evaluadores ENABLE ROW LEVEL SECURITY;
+```
+
+### Table 5: evaluaciones (Evaluations)
+
+Stores project evaluations submitted by docentes.
+
+```sql
+CREATE TABLE public.evaluaciones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proyecto_id UUID NOT NULL REFERENCES public.proyectos(id) ON DELETE CASCADE,
+    evaluador_id UUID NOT NULL REFERENCES public.perfiles(id) ON DELETE CASCADE,
+    puntaje_presentacion INTEGER CHECK (puntaje_presentacion BETWEEN 0 AND 100),
+    puntaje_innovacion INTEGER CHECK (puntaje_innovacion BETWEEN 0 AND 100),
+    puntaje_tecnico INTEGER CHECK (puntaje_tecnico BETWEEN 0 AND 100),
+    puntaje_impacto INTEGER CHECK (puntaje_impacto BETWEEN 0 AND 100),
+    puntaje_total DECIMAL GENERATED ALWAYS AS (
+        (COALESCE(puntaje_presentacion, 0) + 
+         COALESCE(puntaje_innovacion, 0) + 
+         COALESCE(puntaje_tecnico, 0) + 
+         COALESCE(puntaje_impacto, 0)) / 4.0
+    ) STORED,
+    comentarios TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(proyecto_id, evaluador_id)
+);
+
+ALTER TABLE public.evaluaciones ENABLE ROW LEVEL SECURITY;
+
+CREATE TRIGGER update_evaluaciones_updated_at
+    BEFORE UPDATE ON public.evaluaciones
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+## Row Level Security (RLS) Policies
+
+After creating tables, apply security policies to control data access. Copy the contents of `sql/rls_security_hardening.sql` and run it in the SQL Editor:
+
+<CodeGroup>
+```sql sql/rls_security_hardening.sql
+-- ==========================================
+-- RUEDAPRO UNIPAZ: SECURITY HARDENING
+-- RUN THIS SCRIPT IN YOUR SUPABASE SQL EDITOR
+-- ==========================================
+
+-- 1. Restricciones en tabla 'perfiles'
+DROP POLICY IF EXISTS "Public read perfiles" ON public.perfiles;
+
+-- Los usuarios logueados pueden ver los perfiles
+CREATE POLICY "Authenticated read perfiles" ON public.perfiles 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+-- Los usuarios no logueados solo pueden leer nombres de estudiantes
+-- de proyectos ganadores (estado 'Evaluado') para el Ranking Público.
+CREATE POLICY "Public read evaluated estudiantes" ON public.perfiles 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyecto_estudiantes pe
+        JOIN public.proyectos p ON p.id = pe.proyecto_id
+        WHERE pe.estudiante_id = perfiles.id
+        AND p.estado = 'Evaluado'
+    )
+);
+
+-- 2. Restricciones en tabla 'evaluaciones'
+DROP POLICY IF EXISTS "Public read evaluaciones" ON public.evaluaciones;
+
+-- Los usuarios autenticados pueden leer evaluaciones
+CREATE POLICY "Authenticated read evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+-- Los usuarios públicos solo pueden consultar evaluaciones 
+-- de proyectos 'Evaluados' (para el tablero público).
+CREATE POLICY "Public read evaluated evaluaciones" ON public.evaluaciones 
+FOR SELECT 
+TO anon
+USING (
+    EXISTS (
+        SELECT 1 FROM public.proyectos p
+        WHERE p.id = evaluaciones.proyecto_id
+        AND p.estado = 'Evaluado'
+    )
+);
+```
+</CodeGroup>
+
+<Note>
+  See the [Security Best Practices](/deployment/security) page for detailed explanation of these policies.
+</Note>
+
+## Authentication Configuration
+
+### Email Auth Settings
+
+1. Go to **Authentication** > **Providers** in Supabase dashboard
+2. Ensure **Email** provider is enabled
+3. Configure email templates (optional):
+   - Go to **Authentication** > **Email Templates**
+   - Customize confirmation, password reset, and invite emails
+   - Add your UNIPAZ branding
+
+### Disable Public Signups
+
+Since only admins should create users:
+
+1. Go to **Authentication** > **Providers**
+2. Click on **Email** provider
+3. Disable **Enable email signups** if available
+4. Save changes
+
+Users will only be created through the admin dashboard, which uses Supabase Edge Functions or admin API.
+
+## Creating the Admin User
+
+Your first user must be created manually:
+
+<Steps>
+  <Step title="Navigate to Authentication">
+    In Supabase dashboard, go to **Authentication** > **Users**
+  </Step>
+
+  <Step title="Add New User">
+    1. Click **Add user** > **Create new user**
+    2. Enter admin credentials:
+       - Email: `admin@unipaz.edu`
+       - Password: Create a strong password
+       - Auto Confirm User: ✓ **Enable this**
+    3. Click **Create user**
+  </Step>
+
+  <Step title="Set User Metadata">
+    1. Click on the newly created user in the list
+    2. Scroll to **User Metadata** section
+    3. Click **Edit**
+    4. Add this JSON:
+       ```json
+       {
+         "nombre": "Administrador",
+         "rol": "admin"
+       }
+       ```
+    5. Click **Save**
+  </Step>
+
+  <Step title="Create Profile Record">
+    Go to **SQL Editor** and run:
+    ```sql
+    INSERT INTO public.perfiles (id, nombre, rol)
+    VALUES (
+      'paste-user-uuid-here',
+      'Administrador',
+      'admin'
+    );
+    ```
+    
+    <Note>
+      Get the UUID from the Authentication > Users page, copy the user's ID.
+    </Note>
+  </Step>
+</Steps>
+
+## Edge Functions (Optional)
+
+For advanced user management, you can create Edge Functions:
+
+### Admin User Management Function
+
+This function allows admins to create users programmatically:
+
+```typescript functions/admin-manage-users/index.ts
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+serve(async (req) => {
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
+  const { action, email, password, nombre, rol } = await req.json()
+
+  if (action === 'create') {
+    const { data: user, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { nombre, rol }
+    })
+
+    if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400 })
+
+    // Create profile
+    await supabaseAdmin.from('perfiles').insert({
+      id: user.user.id,
+      nombre,
+      rol
+    })
+
+    return new Response(JSON.stringify({ user }), { status: 200 })
+  }
+
+  return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400 })
+})
+```
+
+<Warning>
+  Edge Functions are optional. The admin dashboard can work with direct Supabase API calls for basic user management.
+</Warning>
+
+## Testing Your Configuration
+
+### Test Database Connection
+
+1. Open your deployed application
+2. Open browser DevTools > Console
+3. Check for errors related to Supabase connection
+4. Verify that `supabaseClient` is initialized
+
+### Test Authentication
+
+1. Navigate to the admin login page
+2. Log in with your admin credentials
+3. Verify you can access the admin dashboard
+4. Try creating a test docente user
+5. Log out and log in as the docente to verify
+
+### Test RLS Policies
+
+1. Open an incognito browser window
+2. Navigate to the public ranking page (without logging in)
+3. Verify you can see evaluated projects
+4. Verify you cannot see pending projects
+5. Check browser console for any RLS policy errors
+
+## Common Configuration Issues
+
+### "Invalid API Key" Error
+
+**Cause**: Incorrect or expired API key in `config.js`.
+
+**Solution**:
+- Re-copy the anon key from Project Settings > API
+- Ensure there are no extra spaces or line breaks in the key
+- Verify you're using the `anon` key, not the `service_role` key
+
+### Database Tables Not Found
+
+**Cause**: SQL scripts weren't executed or had errors.
+
+**Solution**:
+- Check Supabase SQL Editor for error messages
+- Run each table creation script separately
+- Verify tables exist in **Database** > **Tables**
+- Check for foreign key constraint errors
+
+### RLS Blocks All Queries
+
+**Cause**: RLS is enabled but no policies are defined.
+
+**Solution**:
+- Run the `rls_security_hardening.sql` script
+- Verify policies exist in **Authentication** > **Policies**
+- Check Supabase logs for specific policy violations
+- Temporarily disable RLS for testing (not recommended for production)
+
+### Users Can't Log In
+
+**Cause**: User metadata not set or incorrect.
+
+**Solution**:
+- Verify user has `rol` field in user_metadata
+- Check that `rol` value matches one of: `admin`, `docente`, `estudiante`
+- Ensure user's email is confirmed
+- Verify the user exists in both `auth.users` and `public.perfiles`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Security Best Practices" icon="shield" href="/deployment/security">
+    Learn about securing your Supabase deployment
+  </Card>
+  <Card title="Setup Guide" icon="rocket" href="/deployment/setup">
+    Complete deployment and configuration walkthrough
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Supabase Documentation](https://supabase.com/docs)
+- [Supabase Auth Guide](https://supabase.com/docs/guides/auth)
+- [Row Level Security](https://supabase.com/docs/guides/auth/row-level-security)
+- [Supabase Edge Functions](https://supabase.com/docs/guides/functions)
